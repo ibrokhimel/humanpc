@@ -20,6 +20,7 @@ automated action behaves like a person rather than a script.
 
 ## Design docs
 
+- [`docs/BUILD_PHASES.md`](docs/BUILD_PHASES.md) — live build tracker (what's done / in progress).
 - [`docs/PLAN.md`](docs/PLAN.md) — implementation plan, architecture, file layout, roadmap.
 - [`docs/blueprint/`](docs/blueprint/) — the Human Interaction Layer research blueprint + diagrams.
 
