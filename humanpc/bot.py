@@ -19,11 +19,14 @@ from .config import Config, Persona, get_persona
 from .exceptions import TargetNotFound
 from .geometry import Point
 from .hil import (
+    BehaviorState,
+    BehaviorTracker,
     HumanTimingManager,
     HumanTypingEngine,
     MouseTrajectoryEngine,
     plan_scroll,
 )
+from .hil.idle import IdleDriftLoop
 from .input import NullDriver, default_driver
 from .perception.dpi import set_dpi_awareness
 from .safety import AuditLog, KillSwitch, SafetyGuard
@@ -32,6 +35,21 @@ from .system import run as shell_run
 from .system.apps import AppProcess, launch
 from .targeting import Match, Resolver
 from .windows import Window, WindowManager
+
+# Which behavioural state each action implies (for bot.behavior observability).
+_ACTION_STATES = {
+    "move_to": BehaviorState.MOVING,
+    "click": BehaviorState.CLICKING,
+    "double_click": BehaviorState.CLICKING,
+    "right_click": BehaviorState.CLICKING,
+    "type": BehaviorState.TYPING,
+    "press": BehaviorState.TYPING,
+    "hotkey": BehaviorState.TYPING,
+    "scroll": BehaviorState.SCROLLING,
+    "think": BehaviorState.THINKING,
+    "read": BehaviorState.READING,
+    "read_text": BehaviorState.READING,
+}
 
 
 class Bot:
@@ -47,6 +65,7 @@ class Bot:
         resolver: Resolver | None = None,
         windows: WindowManager | None = None,
         clipboard: Clipboard | None = None,
+        idle: bool = False,
         arm: bool = True,
     ):
         self.config = config or Config()
@@ -78,11 +97,17 @@ class Bot:
         self._clipboard = clipboard
         self._screen = None        # perception.Screen, lazy
 
+        self.behavior = BehaviorTracker()
+        self._last_action = time.monotonic()
+        self._idle_loop: IdleDriftLoop | None = None
+
         # Dry-run never touches the OS. Real driver is created lazily on first use.
         self._driver = NullDriver() if self.dry_run else driver
 
         if arm and not self.dry_run:
             self.killswitch.start()
+        if idle:
+            self.start_idle()
 
     # --- properties -------------------------------------------------------
     @property
@@ -94,6 +119,10 @@ class Bot:
     @property
     def current_persona(self) -> Persona:
         return self._persona
+
+    @property
+    def state(self) -> BehaviorState:
+        return self.behavior.state
 
     @property
     def resolver(self) -> Resolver:
@@ -132,11 +161,15 @@ class Bot:
     # --- internals --------------------------------------------------------
     def _begin(self, action: str) -> None:
         self.guard.precheck(action)
+        state = _ACTION_STATES.get(action)
+        if state is not None:
+            self.behavior.observe(state)
 
     def _end(self, action: str, **fields) -> None:
         self.audit.record(
             action, persona=self._persona.name, dry_run=self.dry_run, **fields
         )
+        self._last_action = time.monotonic()
 
     def _sleep(self, seconds: float) -> None:
         if self.dry_run or seconds <= 0:
@@ -361,3 +394,23 @@ class Bot:
             if time.monotonic() >= deadline:
                 raise TargetNotFound(f"no window titled {title!r} within {timeout}s")
             time.sleep(interval)
+
+    # --- idle drift -------------------------------------------------------
+    def _idle_seconds(self) -> float:
+        return time.monotonic() - self._last_action
+
+    def start_idle(self, **kwargs) -> "Bot":
+        """Start background idle mouse drift (no-op in dry-run)."""
+        if self.dry_run or self._idle_loop is not None:
+            return self
+        self._idle_loop = IdleDriftLoop(
+            self.driver, self._idle_seconds, random.Random(), **kwargs
+        )
+        self._idle_loop.start()
+        return self
+
+    def stop_idle(self) -> "Bot":
+        if self._idle_loop is not None:
+            self._idle_loop.stop()
+            self._idle_loop = None
+        return self

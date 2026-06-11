@@ -8,6 +8,8 @@ dry-run, with no GUI required.
 
 from __future__ import annotations
 
+from .behavior import BehaviorState, BehaviorTracker
+from .idle import IdleDriftLoop, IdleMovementGenerator
 from .mouse import MouseStep, MouseTrajectoryEngine
 from .scroll import plan_scroll
 from .timing import HumanTimingManager
@@ -20,4 +22,8 @@ __all__ = [
     "KeyEvent",
     "HumanTimingManager",
     "plan_scroll",
+    "BehaviorState",
+    "BehaviorTracker",
+    "IdleMovementGenerator",
+    "IdleDriftLoop",
 ]

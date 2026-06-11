@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from .driver import InputDriver, NullDriver
 
-__all__ = ["InputDriver", "NullDriver", "default_driver"]
+__all__ = ["InputDriver", "NullDriver", "default_driver", "sendinput_driver"]
 
 
 def default_driver(failsafe: bool = True) -> InputDriver:
@@ -18,3 +18,10 @@ def default_driver(failsafe: bool = True) -> InputDriver:
     from .pyautogui_driver import PyAutoGUIDriver
 
     return PyAutoGUIDriver(failsafe=failsafe)
+
+
+def sendinput_driver() -> InputDriver:
+    """Construct the native Win32 SendInput driver (for games; Windows-only)."""
+    from .sendinput_driver import SendInputDriver
+
+    return SendInputDriver()

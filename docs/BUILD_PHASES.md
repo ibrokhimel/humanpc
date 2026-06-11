@@ -56,9 +56,16 @@ All four sit on one shared dispatcher (`execute(bot, action, params)`).
 - [x] YAML/JSON flow runner (`humanpc flow file.yaml`)
 - [x] Shared `dispatch.execute` + `parse_target`; `read_text` / `screenshot`; 126 tests
 
-## ⬜ Phase 5 — Polish
-- [ ] Idle-drift background thread
-- [ ] Record/replay macros
-- [ ] Reading/thinking simulation + behavioral state machine
-- [ ] Packaging extras, docs, examples
-- [ ] Optional native SendInput (games) + browser (Playwright/CDP) backends
+## ✅ Phase 5 — Polish
+- [x] Idle-drift background thread (`Bot(idle=True)` / `start_idle` / `stop_idle`)
+- [x] Record/replay macros (`Recorder` → `Macro` save/load/replay)
+- [x] Reading/thinking sim (Phase 1) + behavioral state machine (`bot.behavior` / `bot.state`)
+- [x] Native Win32 `SendInputDriver` (games backend)
+- [x] Packaging extras, docs (CHANGELOG, README usage), examples
+- [ ] Browser (Playwright/CDP) backend — **deferred** (separate page-level integration)
+
+---
+
+**Status: Phases 0–5 complete.** 146 tests; zero heavy deps at import; proven on a
+real Win11 desktop (see `examples/notepad_live.py`). Only the optional browser
+backend remains deferred.

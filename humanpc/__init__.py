@@ -22,8 +22,9 @@ from .bot import Bot
 from .config import PERSONAS, Config, Persona
 from .dispatch import execute, list_actions
 from .exceptions import Aborted, DriverError, HumanpcError, TargetNotFound
-from .flows import FlowRunner
+from .flows import FlowRunner, Macro, Recorder
 from .geometry import Point, Rect
+from .hil import BehaviorState, BehaviorTracker
 from .system import Clipboard, ShellResult
 from .targeting import Image, Locator, Match, Region, Resolver, parse_target
 from .windows import Window, WindowManager
@@ -47,6 +48,10 @@ __all__ = [
     "Clipboard",
     "ShellResult",
     "FlowRunner",
+    "Recorder",
+    "Macro",
+    "BehaviorState",
+    "BehaviorTracker",
     "execute",
     "list_actions",
     "parse_target",
