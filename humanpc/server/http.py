@@ -15,13 +15,14 @@ def build_app(bot=None):
     except Exception as exc:
         raise DriverError("HTTP server needs fastapi: pip install humanpc[server]") from exc
 
+    from .. import __version__
     from ..dispatch import execute, list_actions
 
     if bot is None:
         from .. import Bot
         bot = Bot()
 
-    app = FastAPI(title="humanpc", version="0.0.1")
+    app = FastAPI(title="humanpc", version=__version__)
 
     @app.get("/actions")
     def actions():

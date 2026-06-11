@@ -3,10 +3,10 @@
 All notable changes to **humanpc**. The framework was built in phases; each phase
 was committed directly to `main` (see [`docs/BUILD_PHASES.md`](docs/BUILD_PHASES.md)).
 
-## [0.0.1] — unreleased
+## [0.1.0] — 2026-06-11
 
-The complete framework: Phases 0–5. 146 tests; `import humanpc` loads zero heavy
-dependencies (every backend is lazy).
+First feature-complete release: Phases 0–5. 146 tests; `import humanpc` loads zero
+heavy dependencies (every backend is lazy). Validated on a real Windows 11 desktop.
 
 ### Phase 0 — Skeleton & safety
 - Sync `Bot` facade; pluggable `InputDriver` + dependency-free `NullDriver`

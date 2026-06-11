@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "humanpc"
-version = "0.0.1"
+dynamic = ["version"]
 description = "Human-like PC automation framework for Windows"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -49,6 +49,9 @@ all = [
     "keyboard>=0.13.5",
     "winocr>=0.0.13",
 ]
+
+[tool.setuptools.dynamic]
+version = { attr = "humanpc.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["humanpc*"]

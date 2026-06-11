@@ -10,6 +10,7 @@ import argparse
 import json
 import sys
 
+from . import __version__
 from .dispatch import execute
 
 # argparse uses dashes; the dispatcher uses underscores.
@@ -24,6 +25,7 @@ _CLI_TO_ACTION = {
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="humanpc", description="Human-like PC automation.")
+    p.add_argument("-V", "--version", action="version", version=f"humanpc {__version__}")
     p.add_argument("--persona", default="default", help="default | fast | careful | tired")
     p.add_argument("--dry-run", action="store_true", help="plan + audit without touching the OS")
     p.add_argument("--seed", type=int, help="deterministic RNG seed")

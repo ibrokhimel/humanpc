@@ -29,7 +29,7 @@ from .system import Clipboard, ShellResult
 from .targeting import Image, Locator, Match, Region, Resolver, parse_target
 from .windows import Window, WindowManager
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 __all__ = [
     "Bot",
