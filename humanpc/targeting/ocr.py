@@ -111,6 +111,11 @@ class OCRFinder:
             for c, b in self._collect(words, target)
         ]
 
+    def text(self, *, image=None, region=None) -> str:
+        """All recognised text in reading order, space-joined."""
+        words = self._ocr(image if image is not None else self._capture(region))
+        return " ".join(w.text for w in words)
+
 
 def _winocr_words(image):
     try:

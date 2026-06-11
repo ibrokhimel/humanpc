@@ -5,18 +5,69 @@ keyboard, screen, windows, and apps — with a **Human Interaction Layer** (Béz
 mouse paths, Fitts-law velocity, natural typing rhythm, human scrolling) so every
 automated action behaves like a person rather than a script.
 
-> **Status:** 🟡 Planning. See [`docs/PLAN.md`](docs/PLAN.md). No implementation code yet.
+> **Status:** 🟢 Phases 0–4 complete — the engine and all three interfaces work.
+> Phase 5 (polish) remains. See [`docs/BUILD_PHASES.md`](docs/BUILD_PHASES.md).
 
 > **Intended use:** authorized automation only — RPA, QA / UI-test automation,
 > accessibility tooling, and personal task automation on machines you control.
 
-## What it will do
+## What it does
 
-- **One simple API** — `bot.click("Login")`, `bot.type("hello")`, `bot.scroll_to("Submit")`.
+- **One simple API** — `bot.click("Login")`, `bot.type("hello")`, `bot.find_all(Image("icon.png"))`.
 - **Flexible targets** — text, an image, coordinates, or a region all resolve through one engine.
 - **Human by default** — natural mouse curves, variable typing speed, pauses, and timing.
-- **Three ways to call it** — Python library, CLI, and an MCP/HTTP tool server (agent-callable).
+- **Three ways to call it** — Python library, CLI, and HTTP / MCP tool server (agent-callable).
 - **Do anything on a PC** — input, screenshots/OCR, window & app management, clipboard, shell.
+
+## Install
+
+```bash
+pip install -e .            # core (zero dependencies; dry-run + tests work as-is)
+pip install -e .[all]       # real input, capture, OCR, UIA, windows
+pip install -e .[server]    # FastAPI HTTP + MCP tool server
+```
+
+## Usage
+
+**Python**
+```python
+from humanpc import Bot, Image
+bot = Bot()                          # real input (lazy-loads pyautogui)
+bot.move_to("Sign in").click()       # text -> UIA/OCR; human mouse path
+bot.type("hello@example.com")        # human typing (self-correcting typos)
+bot.click(Image("submit.png"))       # image -> OpenCV template match
+bot.wait_for("Dashboard", timeout=20)
+
+Bot(dry_run=True).click((400, 300))  # plan + audit, never touches the OS
+```
+
+**CLI** (argparse, no extra deps)
+```bash
+humanpc click "Login"
+humanpc --dry-run --json find 400,300
+humanpc type "hello world"
+humanpc run echo hi
+humanpc flow examples/flows/notepad.yaml
+```
+
+**HTTP / MCP servers** (agent-callable tools)
+```bash
+humanpc serve --http --port 8000     # POST /click {"target":"Login"}
+humanpc serve --mcp                  # MCP stdio tool server
+```
+
+**Declarative flow** (`humanpc flow file.yaml`)
+```yaml
+persona: careful
+steps:
+  - open_app: notepad.exe
+  - wait_for: "Untitled - Notepad"
+  - type: "Hello from humanpc"
+  - hotkey: [ctrl, s]
+```
+
+A global kill-switch (`Ctrl+Alt+Q`, or throw the cursor into a screen corner)
+aborts any run.
 
 ## Design docs
 
