@@ -59,8 +59,9 @@ class Config:
     audit_enabled: bool = True
     audit_path: str | None = None         # JSONL file path; None == in-memory + logger only
 
-    # Movement (placeholder until HIL)
-    move_steps: int = 60
+    # Human typing (HIL)
+    typing_errors: bool = True            # inject realistic typos...
+    always_correct_typing: bool = True    # ...but always self-correct -> final text exact
 
     # Determinism for tests / reproducible sessions
     seed: int | None = None

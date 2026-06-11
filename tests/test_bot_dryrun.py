@@ -15,12 +15,12 @@ def test_dryrun_uses_nulldriver():
     assert isinstance(bot.driver, NullDriver)
 
 
-def test_move_steps_and_lands_on_target():
-    bot = make_bot(move_steps=20)
+def test_move_is_multistep_and_lands_on_target():
+    bot = make_bot()
     bot.move_to((300, 150))
     moves = [e for e in bot.driver.events if e[0] == "move"]
-    assert len(moves) == 20
-    assert moves[-1] == ("move", 300, 150)        # ends exactly on target
+    assert len(moves) >= 10                        # HIL emits a multi-step path
+    assert moves[-1] == ("move", 300, 150)         # lands exactly on target
     assert bot.position() == (300, 150)
 
 
@@ -34,7 +34,7 @@ def test_click_emits_down_then_up_and_audits():
 
 
 def test_type_writes_each_char():
-    bot = make_bot()
+    bot = make_bot(typing_errors=False)  # no typo/correction noise -> exact stream
     bot.type("hi!")
     typed = [e[1] for e in bot.driver.events if e[0] == "write_char"]
     assert typed == ["h", "i", "!"]
@@ -61,7 +61,7 @@ def test_persona_context_restores():
 
 
 def test_killswitch_aborts_midrun():
-    bot = make_bot(move_steps=50)
+    bot = make_bot()
     bot.killswitch.request_abort()
     with pytest.raises(Aborted):
         bot.move_to((500, 500))
