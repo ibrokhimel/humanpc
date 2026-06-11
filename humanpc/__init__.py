@@ -22,7 +22,9 @@ from .bot import Bot
 from .config import PERSONAS, Config, Persona
 from .exceptions import Aborted, DriverError, HumanpcError, TargetNotFound
 from .geometry import Point, Rect
+from .system import Clipboard, ShellResult
 from .targeting import Image, Locator, Match, Region, Resolver
+from .windows import Window, WindowManager
 
 __version__ = "0.0.1"
 
@@ -38,6 +40,10 @@ __all__ = [
     "Locator",
     "Region",
     "Resolver",
+    "WindowManager",
+    "Window",
+    "Clipboard",
+    "ShellResult",
     "HumanpcError",
     "Aborted",
     "TargetNotFound",
@@ -53,8 +59,11 @@ __all__ = [
     "hotkey",
     "scroll",
     "find",
+    "find_all",
     "exists",
     "wait_for",
+    "run",
+    "open_app",
 ]
 
 _default_bot: Bot | None = None
@@ -110,3 +119,15 @@ def exists(*args, **kwargs):
 
 def wait_for(*args, **kwargs):
     return bot().wait_for(*args, **kwargs)
+
+
+def find_all(*args, **kwargs):
+    return bot().find_all(*args, **kwargs)
+
+
+def run(*args, **kwargs):
+    return bot().run(*args, **kwargs)
+
+
+def open_app(*args, **kwargs):
+    return bot().open_app(*args, **kwargs)

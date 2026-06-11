@@ -41,10 +41,11 @@ Replaced the placeholder smoothstep motion with genuinely human input.
 - [x] Feed match size into the Fitts model
 - [x] `Bot.find / exists / wait_for`; 68 tests (UIA stays an opt-in integration test)
 
-## ⬜ Phase 3 — Window & system tools
-- [ ] Window/app manager (list/find/focus/move/resize/min/max/close), launch/kill
-- [ ] Clipboard (text + image), shell `run`
-- [ ] `wait_for / wait_until_gone / find_all / exists`
+## ✅ Phase 3 — Window & system tools
+- [x] Window/app manager (list/find/focus/move/resize/min/max/close), launch/kill *(Win32 backend = live-desktop integration; fake-backend unit tests)*
+- [x] Clipboard (text + image), shell `run`
+- [x] `find_all` (template + OCR + UIA); `wait_for` / `wait_for_window`; `exists`
+- [x] `Bot.run / open_app / list_windows / find_window / active_window / focus`; 94 tests
 
 ## ⬜ Phase 4 — Calling interfaces
 - [ ] `typer` CLI

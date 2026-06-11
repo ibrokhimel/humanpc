@@ -27,7 +27,11 @@ from .hil import (
 from .input import NullDriver, default_driver
 from .perception.dpi import set_dpi_awareness
 from .safety import AuditLog, KillSwitch, SafetyGuard
+from .system import Clipboard, ShellResult
+from .system import run as shell_run
+from .system.apps import AppProcess, launch
 from .targeting import Match, Resolver
+from .windows import Window, WindowManager
 
 
 class Bot:
@@ -41,6 +45,8 @@ class Bot:
         audit: AuditLog | None = None,
         killswitch: KillSwitch | None = None,
         resolver: Resolver | None = None,
+        windows: WindowManager | None = None,
+        clipboard: Clipboard | None = None,
         arm: bool = True,
     ):
         self.config = config or Config()
@@ -68,6 +74,8 @@ class Bot:
         )
         self._timing = HumanTimingManager()
         self._resolver = resolver  # default built lazily (cheap; finders load on use)
+        self._windows = windows    # default built lazily (Win32 backend loads on use)
+        self._clipboard = clipboard
 
         # Dry-run never touches the OS. Real driver is created lazily on first use.
         self._driver = NullDriver() if self.dry_run else driver
@@ -91,6 +99,18 @@ class Bot:
         if self._resolver is None:
             self._resolver = Resolver()
         return self._resolver
+
+    @property
+    def windows(self) -> WindowManager:
+        if self._windows is None:
+            self._windows = WindowManager()
+        return self._windows
+
+    @property
+    def clipboard(self) -> Clipboard:
+        if self._clipboard is None:
+            self._clipboard = Clipboard()
+        return self._clipboard
 
     def position(self) -> tuple[int, int]:
         return self.driver.position()
@@ -237,6 +257,10 @@ class Bot:
         """Locate a target without acting on it. Returns None if not found."""
         return self.resolver.resolve(target)
 
+    def find_all(self, target) -> list[Match]:
+        """Locate every instance of a target. Returns [] if none found."""
+        return self.resolver.resolve_all(target)
+
     def exists(self, target) -> bool:
         try:
             return self.find(target) is not None
@@ -257,4 +281,57 @@ class Bot:
             if time.monotonic() >= deadline:
                 self.audit.record("wait_for", found=False)
                 raise TargetNotFound(f"{target!r} did not appear within {timeout}s")
+            time.sleep(interval)
+
+    # --- system & windows -------------------------------------------------
+    def run(self, command, **kwargs) -> ShellResult:
+        """Run a shell command. Skipped (returns a sentinel) in dry-run."""
+        self._begin("run")
+        if self.dry_run:
+            self._end("run", command=str(command), skipped=True)
+            return ShellResult(command, 0, "", "[dry-run] not executed")
+        result = shell_run(command, **kwargs)
+        self._end("run", returncode=result.returncode)
+        return result
+
+    def open_app(self, target, args=(), *, wait=None, timeout: float = 15.0, **kwargs) -> AppProcess:
+        """Launch an application. With ``wait`` (a window title), block until it appears."""
+        self._begin("open_app")
+        if self.dry_run:
+            self._end("open_app", target=str(target), skipped=True)
+            return AppProcess(pid=-1)
+        proc = launch(target, args, **kwargs)
+        self._end("open_app", target=str(target), pid=proc.pid)
+        if wait:
+            self.wait_for_window(wait, timeout=timeout)
+        return proc
+
+    def list_windows(self, **kwargs) -> list[Window]:
+        return self.windows.list(**kwargs)
+
+    def find_window(self, title, **kwargs) -> Window | None:
+        return self.windows.find(title, **kwargs)
+
+    def active_window(self) -> Window | None:
+        return self.windows.active()
+
+    def focus(self, target) -> Window:
+        """Bring a window to the foreground (by title or Window)."""
+        win = target if isinstance(target, Window) else self.find_window(target)
+        if win is None:
+            raise TargetNotFound(f"no window matching {target!r}")
+        self._begin("focus")
+        if not self.dry_run:
+            win.focus()
+        self._end("focus", title=win.title)
+        return win
+
+    def wait_for_window(self, title, *, timeout: float = 15.0, interval: float = 0.3) -> Window:
+        deadline = time.monotonic() + timeout
+        while True:
+            win = self.find_window(title)
+            if win is not None:
+                return win
+            if time.monotonic() >= deadline:
+                raise TargetNotFound(f"no window titled {title!r} within {timeout}s")
             time.sleep(interval)

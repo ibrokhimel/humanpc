@@ -77,6 +77,53 @@ class Resolver:
             return self._resolve_text(target, region)
         raise TypeError(f"unsupported target type: {type(target).__name__}")
 
+    def resolve_all(self, target, *, region: Rect | None = None) -> list[Match]:
+        """Like ``resolve`` but returns every match (used by ``find_all``)."""
+        if isinstance(target, Match):
+            return [target]
+        if isinstance(target, Image):
+            try:
+                return self.template().find_all(target, region=region)
+            except DriverError:
+                return []
+        if isinstance(target, Locator):
+            return self._resolve_all_text(target.text, region) if target.text else self._uia_all(target, region)
+        if isinstance(target, Rect):
+            return [Match.from_rect(target)]
+        if isinstance(target, Point):
+            return [Match.from_point(target)]
+        if isinstance(target, (tuple, list)):
+            if len(target) == 2:
+                return [Match.from_point(target)]
+            if len(target) == 4:
+                return [Match.from_rect(Rect(*target))]
+            raise TypeError(f"coordinate target must be (x, y) or (x, y, w, h); got {target!r}")
+        if isinstance(target, str):
+            return self._resolve_all_text(target, region)
+        raise TypeError(f"unsupported target type: {type(target).__name__}")
+
+    def _resolve_all_text(self, text: str, region) -> list[Match]:
+        results: list[Match] = []
+        if self.uia_enabled:
+            try:
+                results = self.uia().find_all(name=text, region=region)
+            except DriverError:
+                results = []
+        if not results and self.ocr_enabled:
+            try:
+                results = self.ocr().find_all(text, region=region)
+            except DriverError:
+                results = []
+        return results
+
+    def _uia_all(self, loc: Locator, region) -> list[Match]:
+        try:
+            return self.uia().find_all(
+                name=loc.name, control_type=loc.control_type, window=loc.window, region=region
+            )
+        except DriverError:
+            return []
+
     def _resolve_text(self, text: str, region) -> Match | None:
         for method in self.prefer:
             try:

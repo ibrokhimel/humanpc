@@ -59,16 +59,12 @@ class OCRFinder:
             "no OCR backend available: pip install winocr (Windows) or pytesseract"
         )
 
-    def find(self, text, *, image=None, region=None) -> Match | None:
-        target = _norm(text)
-        if not target:
-            return None
-        words = self._ocr(image if image is not None else self._capture(region))
-        ox, oy = (region.x, region.y) if (image is None and region is not None) else (0, 0)
-
+    @staticmethod
+    def _collect(words, target: str) -> list[tuple[float, Rect]]:
+        """All matches of ``target`` (a normalised string) among word boxes."""
         norm_words = [(_norm(w.text), w) for w in words]
         tokens = target.split()
-        best = None  # (confidence, bbox)
+        out: list[tuple[float, Rect]] = []
 
         # Match the target as a run of consecutive recognised words.
         for i in range(len(norm_words)):
@@ -82,20 +78,38 @@ class OCRFinder:
                 w = norm_words[i + k][1]
                 bbox = w.bbox if bbox is None else _union(bbox, w.bbox)
                 conf = min(conf, w.confidence)
-            if ok and bbox is not None and (best is None or conf > best[0]):
-                best = (conf, bbox)
+            if ok and bbox is not None:
+                out.append((conf, bbox))
 
         # Fallback: target contained within a single recognised token.
-        if best is None:
+        if not out:
             for wnorm, w in norm_words:
                 if target in wnorm:
-                    best = (w.confidence, w.bbox)
-                    break
+                    out.append((w.confidence, w.bbox))
+        return out
 
-        if best is None:
+    def find(self, text, *, image=None, region=None) -> Match | None:
+        target = _norm(text)
+        if not target:
             return None
-        conf, bbox = best
+        words = self._ocr(image if image is not None else self._capture(region))
+        ox, oy = (region.x, region.y) if (image is None and region is not None) else (0, 0)
+        matches = self._collect(words, target)
+        if not matches:
+            return None
+        conf, bbox = max(matches, key=lambda m: m[0])
         return Match(Rect(bbox.x + ox, bbox.y + oy, bbox.width, bbox.height), float(conf), "ocr", text=text)
+
+    def find_all(self, text, *, image=None, region=None) -> list[Match]:
+        target = _norm(text)
+        if not target:
+            return []
+        words = self._ocr(image if image is not None else self._capture(region))
+        ox, oy = (region.x, region.y) if (image is None and region is not None) else (0, 0)
+        return [
+            Match(Rect(b.x + ox, b.y + oy, b.width, b.height), float(c), "ocr", text=text)
+            for c, b in self._collect(words, target)
+        ]
 
 
 def _winocr_words(image):
