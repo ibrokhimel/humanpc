@@ -17,16 +17,22 @@ dependencies = []
 [project.optional-dependencies]
 input = ["pyautogui>=0.9.54"]
 capture = ["mss>=9.0", "Pillow>=10.0"]
-ocr = ["opencv-python>=4.8", "numpy>=1.24"]
+vision = ["opencv-python>=4.8", "numpy>=1.24", "Pillow>=10.0", "mss>=9.0"]
+ocr = ["winocr>=0.0.13"]
 uia = ["pywinauto>=0.6.8", "comtypes"]
 server = ["fastapi>=0.110", "uvicorn>=0.29", "mcp>=1.0"]
 killswitch = ["keyboard>=0.13.5"]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "opencv-python>=4.8", "numpy>=1.24"]
 all = [
     "pyautogui>=0.9.54",
     "mss>=9.0",
     "Pillow>=10.0",
+    "opencv-python>=4.8",
+    "numpy>=1.24",
+    "pywinauto>=0.6.8",
+    "comtypes",
     "keyboard>=0.13.5",
+    "winocr>=0.0.13",
 ]
 
 [tool.setuptools.packages.find]
