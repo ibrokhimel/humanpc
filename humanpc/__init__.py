@@ -22,6 +22,7 @@ from .bot import Bot
 from .config import PERSONAS, Config, Persona
 from .exceptions import Aborted, DriverError, HumanpcError, TargetNotFound
 from .geometry import Point, Rect
+from .targeting import Image, Locator, Match, Region, Resolver
 
 __version__ = "0.0.1"
 
@@ -32,6 +33,11 @@ __all__ = [
     "PERSONAS",
     "Point",
     "Rect",
+    "Match",
+    "Image",
+    "Locator",
+    "Region",
+    "Resolver",
     "HumanpcError",
     "Aborted",
     "TargetNotFound",
@@ -46,6 +52,9 @@ __all__ = [
     "press",
     "hotkey",
     "scroll",
+    "find",
+    "exists",
+    "wait_for",
 ]
 
 _default_bot: Bot | None = None
@@ -89,3 +98,15 @@ def hotkey(*args, **kwargs):
 
 def scroll(*args, **kwargs):
     return bot().scroll(*args, **kwargs)
+
+
+def find(*args, **kwargs):
+    return bot().find(*args, **kwargs)
+
+
+def exists(*args, **kwargs):
+    return bot().exists(*args, **kwargs)
+
+
+def wait_for(*args, **kwargs):
+    return bot().wait_for(*args, **kwargs)

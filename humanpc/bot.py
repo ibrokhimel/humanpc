@@ -16,7 +16,8 @@ import time
 from contextlib import contextmanager
 
 from .config import Config, Persona, get_persona
-from .geometry import Point, to_point
+from .exceptions import TargetNotFound
+from .geometry import Point
 from .hil import (
     HumanTimingManager,
     HumanTypingEngine,
@@ -26,6 +27,7 @@ from .hil import (
 from .input import NullDriver, default_driver
 from .perception.dpi import set_dpi_awareness
 from .safety import AuditLog, KillSwitch, SafetyGuard
+from .targeting import Match, Resolver
 
 
 class Bot:
@@ -38,6 +40,7 @@ class Bot:
         driver=None,
         audit: AuditLog | None = None,
         killswitch: KillSwitch | None = None,
+        resolver: Resolver | None = None,
         arm: bool = True,
     ):
         self.config = config or Config()
@@ -64,6 +67,7 @@ class Bot:
             always_correct=self.config.always_correct_typing,
         )
         self._timing = HumanTimingManager()
+        self._resolver = resolver  # default built lazily (cheap; finders load on use)
 
         # Dry-run never touches the OS. Real driver is created lazily on first use.
         self._driver = NullDriver() if self.dry_run else driver
@@ -82,8 +86,20 @@ class Bot:
     def current_persona(self) -> Persona:
         return self._persona
 
+    @property
+    def resolver(self) -> Resolver:
+        if self._resolver is None:
+            self._resolver = Resolver()
+        return self._resolver
+
     def position(self) -> tuple[int, int]:
         return self.driver.position()
+
+    def _resolve(self, target) -> Match:
+        match = self.resolver.resolve(target)
+        if match is None:
+            raise TargetNotFound(f"could not locate target: {target!r}")
+        return match
 
     # --- internals --------------------------------------------------------
     def _begin(self, action: str) -> None:
@@ -111,22 +127,24 @@ class Bot:
             self._persona = previous
 
     # --- mouse ------------------------------------------------------------
-    def move_to(self, target, *, target_size: tuple[int, int] = (20, 20)) -> "Bot":
-        point = to_point(target)
+    def move_to(self, target, *, target_size: tuple[int, int] | None = None) -> "Bot":
+        match = self._resolve(target)
+        point = match.center
+        size = target_size or match.size
         self._begin("move_to")
         start = Point(*self.position())
         plan = self._mouse.plan(
             start,
             point,
             rng=self._rng,
-            target_size=target_size,
+            target_size=size,
             speed_multiplier=self._persona.speed_multiplier,
         )
         for step in plan:
             self.killswitch.check()
             self.driver.move(*step.point.as_int())
             self._sleep(step.dt)
-        self._end("move_to", x=round(point.x), y=round(point.y))
+        self._end("move_to", x=round(point.x), y=round(point.y), via=match.method)
         return self
 
     def click(self, target=None, *, button: str = "left", clicks: int = 1) -> "Bot":
@@ -213,3 +231,30 @@ class Bot:
         chars = content if isinstance(content, int) else len(str(content))
         self._end("read", chars=chars)
         return self
+
+    # --- finding ----------------------------------------------------------
+    def find(self, target) -> Match | None:
+        """Locate a target without acting on it. Returns None if not found."""
+        return self.resolver.resolve(target)
+
+    def exists(self, target) -> bool:
+        try:
+            return self.find(target) is not None
+        except (TargetNotFound, TypeError):
+            return False
+
+    def wait_for(self, target, *, timeout: float = 10.0, interval: float = 0.25) -> Match:
+        """Poll until ``target`` appears, returning its Match (or raising)."""
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                match = self.find(target)
+            except TargetNotFound:
+                match = None
+            if match is not None:
+                self.audit.record("wait_for", found=True, via=match.method)
+                return match
+            if time.monotonic() >= deadline:
+                self.audit.record("wait_for", found=False)
+                raise TargetNotFound(f"{target!r} did not appear within {timeout}s")
+            time.sleep(interval)

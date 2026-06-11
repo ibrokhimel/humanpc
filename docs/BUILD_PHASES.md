@@ -31,14 +31,15 @@ Replaced the placeholder smoothstep motion with genuinely human input.
 - [x] Wire engines into `Bot.move_to` / `Bot.type` / `Bot.scroll`
 - [x] Statistical + path tests (40 total); mouse-path visualization example
 
-## ⬜ Phase 2 — Targeting resolver
-Make `bot.click("Login")` work by name/image.
+## ✅ Phase 2 — Targeting resolver
+`bot.click("Login")` works by name/image.
 
-- [ ] UI Automation finder (pywinauto) — primary
-- [ ] OCR finder (Windows.Media.Ocr) — fallback
-- [ ] OpenCV template match (image targets)
-- [ ] Unified `resolve(Target) -> Match`; `Locator / Image / Region` types
-- [ ] Feed match size into the Fitts model
+- [x] UI Automation finder (pywinauto) — primary *(live-desktop integration)*
+- [x] OCR finder (winocr / pytesseract backends, pluggable) — fallback
+- [x] OpenCV template match (image targets), multi-scale
+- [x] Unified `resolve(Target) -> Match`; `Locator / Image / Region` types
+- [x] Feed match size into the Fitts model
+- [x] `Bot.find / exists / wait_for`; 68 tests (UIA stays an opt-in integration test)
 
 ## ⬜ Phase 3 — Window & system tools
 - [ ] Window/app manager (list/find/focus/move/resize/min/max/close), launch/kill
