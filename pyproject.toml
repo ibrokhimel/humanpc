@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "humanpc"
+version = "0.0.1"
+description = "Human-like PC automation framework for Windows"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "ibrokhimel" }]
+keywords = ["automation", "rpa", "gui", "human-like", "windows"]
+# Core has ZERO hard dependencies: dry-run mode + the NullDriver run on stdlib alone.
+# Real capabilities are opt-in via extras below.
+dependencies = []
+
+[project.optional-dependencies]
+input = ["pyautogui>=0.9.54"]
+capture = ["mss>=9.0", "Pillow>=10.0"]
+ocr = ["opencv-python>=4.8", "numpy>=1.24"]
+uia = ["pywinauto>=0.6.8", "comtypes"]
+server = ["fastapi>=0.110", "uvicorn>=0.29", "mcp>=1.0"]
+killswitch = ["keyboard>=0.13.5"]
+dev = ["pytest>=8.0"]
+all = [
+    "pyautogui>=0.9.54",
+    "mss>=9.0",
+    "Pillow>=10.0",
+    "keyboard>=0.13.5",
+]
+
+[tool.setuptools.packages.find]
+include = ["humanpc*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
