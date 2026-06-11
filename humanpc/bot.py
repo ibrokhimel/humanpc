@@ -17,6 +17,12 @@ from contextlib import contextmanager
 
 from .config import Config, Persona, get_persona
 from .geometry import Point, to_point
+from .hil import (
+    HumanTimingManager,
+    HumanTypingEngine,
+    MouseTrajectoryEngine,
+    plan_scroll,
+)
 from .input import NullDriver, default_driver
 from .perception.dpi import set_dpi_awareness
 from .safety import AuditLog, KillSwitch, SafetyGuard
@@ -50,6 +56,14 @@ class Bot:
             hotkey=self.config.kill_hotkey
         )
         self.guard = SafetyGuard(self.killswitch, max_actions=self.config.max_actions)
+
+        # Human Interaction Layer engines (pure planners; cheap to construct).
+        self._mouse = MouseTrajectoryEngine()
+        self._typing = HumanTypingEngine(
+            errors_enabled=self.config.typing_errors,
+            always_correct=self.config.always_correct_typing,
+        )
+        self._timing = HumanTimingManager()
 
         # Dry-run never touches the OS. Real driver is created lazily on first use.
         self._driver = NullDriver() if self.dry_run else driver
@@ -97,21 +111,21 @@ class Bot:
             self._persona = previous
 
     # --- mouse ------------------------------------------------------------
-    def move_to(self, target) -> "Bot":
+    def move_to(self, target, *, target_size: tuple[int, int] = (20, 20)) -> "Bot":
         point = to_point(target)
         self._begin("move_to")
-        sx, sy = self.position()
-        steps = max(1, self.config.move_steps)
-        duration = self._persona.move_duration * self._persona.speed_multiplier
-        per_step = duration / steps
-        for i in range(1, steps + 1):
+        start = Point(*self.position())
+        plan = self._mouse.plan(
+            start,
+            point,
+            rng=self._rng,
+            target_size=target_size,
+            speed_multiplier=self._persona.speed_multiplier,
+        )
+        for step in plan:
             self.killswitch.check()
-            t = i / steps
-            ease = t * t * (3 - 2 * t)  # smoothstep; HIL replaces this in Phase 1
-            x = sx + (point.x - sx) * ease
-            y = sy + (point.y - sy) * ease
-            self.driver.move(round(x), round(y))
-            self._sleep(per_step)
+            self.driver.move(*step.point.as_int())
+            self._sleep(step.dt)
         self._end("move_to", x=round(point.x), y=round(point.y))
         return self
 
@@ -139,18 +153,25 @@ class Bot:
         if at is not None:
             self.move_to(at)
         self._begin("scroll")
-        self.driver.scroll(0, int(amount))
+        for delta, dt in plan_scroll(amount, self._rng):
+            self.killswitch.check()
+            if delta:
+                self.driver.scroll(0, delta)
+            self._sleep(dt)
         self._end("scroll", amount=int(amount))
         return self
 
     # --- keyboard ---------------------------------------------------------
     def type(self, text: str) -> "Bot":
         self._begin("type")
-        base = 1.0 / max(0.1, self._persona.type_cps)
-        for ch in text:
+        base_wpm = max(20.0, self._persona.type_cps * 12)  # cps -> wpm (~5 chars/word)
+        for event in self._typing.plan(text, self._rng, base_wpm=base_wpm):
             self.killswitch.check()
-            self.driver.write_char(ch)
-            self._sleep(max(0.0, self._rng.gauss(base, base * 0.3)))
+            self._sleep(event.delay)
+            if event.kind == "char":
+                self.driver.write_char(event.value)
+            else:
+                self.driver.tap(event.value)
         self._end("type", length=len(text))
         return self
 
@@ -175,4 +196,20 @@ class Bot:
         for key in reversed(keys):
             self.driver.key_up(key)
         self._end("hotkey", keys=list(keys))
+        return self
+
+    # --- deliberation -----------------------------------------------------
+    def think(self, complexity: str = "medium") -> "Bot":
+        """Pause as if deciding. complexity: low | medium | high | very_high."""
+        self._begin("think")
+        self._sleep(self._timing.thinking_delay(complexity, self._rng))
+        self._end("think", complexity=complexity)
+        return self
+
+    def read(self, content, *, complexity: float = 1.0) -> "Bot":
+        """Pause as if reading. ``content`` may be text or a character count."""
+        self._begin("read")
+        self._sleep(self._timing.reading_delay(content, self._rng, complexity))
+        chars = content if isinstance(content, int) else len(str(content))
+        self._end("read", chars=chars)
         return self

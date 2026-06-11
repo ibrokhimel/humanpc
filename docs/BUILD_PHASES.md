@@ -21,15 +21,15 @@ The foundation everything rides on.
 - [x] Geometry, exceptions, dataclass `Config` + personas
 - [x] `pyproject.toml` (zero core deps, opt-in extras), 23 tests, dry-run smoke example
 
-## 🔨 Phase 1 — Human Interaction Layer
-Replace the placeholder smoothstep motion with genuinely human input.
+## ✅ Phase 1 — Human Interaction Layer
+Replaced the placeholder smoothstep motion with genuinely human input.
 
-- [ ] Timing manager (thinking / reading delays, sync port)
-- [ ] Mouse engine: Bézier path + Fitts-law velocity (accelerate→cruise→decelerate) + jitter + overshoot
-- [ ] Typing engine: variable speed + word/sentence pauses + typo injection with **guaranteed self-correction** (reliable by default)
-- [ ] Human scroll (burst + pause)
-- [ ] Wire engines into `Bot.move_to` / `Bot.type` / `Bot.scroll`
-- [ ] Statistical + path tests; mouse-path visualization example
+- [x] Timing manager (thinking / reading delays, sync port) → `Bot.think()` / `Bot.read()`
+- [x] Mouse engine: Bézier path + Fitts-law velocity (accelerate→cruise→decelerate) + jitter + overshoot
+- [x] Typing engine: variable speed + word/sentence pauses + typo injection with **guaranteed self-correction** (final text always exact)
+- [x] Human scroll (burst + pause)
+- [x] Wire engines into `Bot.move_to` / `Bot.type` / `Bot.scroll`
+- [x] Statistical + path tests (40 total); mouse-path visualization example
 
 ## ⬜ Phase 2 — Targeting resolver
 Make `bot.click("Login")` work by name/image.
