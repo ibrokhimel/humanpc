@@ -82,6 +82,33 @@ class UIAFinder:
             return None
         return Match(bbox, 1.0, "uia", text=name, handle=element)
 
+    def find_all(self, *, name=None, control_type=None, window=None, region=None) -> list[Match]:
+        filt = {}
+        if name:
+            filt["title"] = name
+        if control_type:
+            filt["control_type"] = control_type
+        if not filt:
+            return []
+
+        desktop = self._backend()
+        out: list[Match] = []
+        for root in self._roots(desktop, window):
+            try:
+                elements = root.descendants(**filt)
+            except Exception:
+                continue
+            for element in elements:
+                try:
+                    r = element.rectangle()
+                    bbox = Rect(r.left, r.top, r.right - r.left, r.bottom - r.top)
+                except Exception:
+                    continue
+                if region is not None and not _intersects(bbox, region):
+                    continue
+                out.append(Match(bbox, 1.0, "uia", text=name, handle=element))
+        return out
+
 
 def _intersects(a: Rect, b: Rect) -> bool:
     return not (a.right < b.x or a.x > b.right or a.bottom < b.y or a.y > b.bottom)
