@@ -1,0 +1,13 @@
+# A declarative humanpc flow. Run it with:
+#   humanpc flow examples/flows/notepad.yaml
+#   humanpc --dry-run flow examples/flows/notepad.yaml   # plan only
+persona: careful
+steps:
+  - open_app: notepad.exe
+  - wait_for: "Untitled - Notepad"
+  - click: "Text editor"          # UIA control name (falls back to OCR)
+  - type: "Hello from humanpc.\nThis was typed like a human."
+  - hotkey: [ctrl, s]
+  - wait_for: "Save As"
+  - type: "humanpc-demo.txt"
+  - hotkey: [alt, s]

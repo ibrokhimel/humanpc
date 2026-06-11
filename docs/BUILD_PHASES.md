@@ -47,11 +47,14 @@ Replaced the placeholder smoothstep motion with genuinely human input.
 - [x] `find_all` (template + OCR + UIA); `wait_for` / `wait_for_window`; `exists`
 - [x] `Bot.run / open_app / list_windows / find_window / active_window / focus`; 94 tests
 
-## ⬜ Phase 4 — Calling interfaces
-- [ ] `typer` CLI
-- [ ] FastAPI HTTP server
-- [ ] MCP tool server (each verb = an agent-callable tool)
-- [ ] YAML flow runner
+## ✅ Phase 4 — Calling interfaces
+All four sit on one shared dispatcher (`execute(bot, action, params)`).
+
+- [x] CLI (`humanpc <verb> ...`, argparse — no extra deps)
+- [x] FastAPI HTTP server (`POST /<action>`) — real TestClient coverage
+- [x] MCP tool server (each verb = an agent-callable tool, FastMCP)
+- [x] YAML/JSON flow runner (`humanpc flow file.yaml`)
+- [x] Shared `dispatch.execute` + `parse_target`; `read_text` / `screenshot`; 126 tests
 
 ## ⬜ Phase 5 — Polish
 - [ ] Idle-drift background thread

@@ -6,7 +6,8 @@ size then feeds the Fitts-law model so the Bot approaches small controls careful
 
 from __future__ import annotations
 
+from .parse import parse_target
 from .resolver import Resolver
 from .types import Image, Locator, Match, Region
 
-__all__ = ["Resolver", "Match", "Image", "Locator", "Region"]
+__all__ = ["Resolver", "Match", "Image", "Locator", "Region", "parse_target"]

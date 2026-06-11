@@ -76,6 +76,7 @@ class Bot:
         self._resolver = resolver  # default built lazily (cheap; finders load on use)
         self._windows = windows    # default built lazily (Win32 backend loads on use)
         self._clipboard = clipboard
+        self._screen = None        # perception.Screen, lazy
 
         # Dry-run never touches the OS. Real driver is created lazily on first use.
         self._driver = NullDriver() if self.dry_run else driver
@@ -111,6 +112,13 @@ class Bot:
         if self._clipboard is None:
             self._clipboard = Clipboard()
         return self._clipboard
+
+    @property
+    def screen(self):
+        if self._screen is None:
+            from .perception import Screen
+            self._screen = Screen()
+        return self._screen
 
     def position(self) -> tuple[int, int]:
         return self.driver.position()
@@ -260,6 +268,24 @@ class Bot:
     def find_all(self, target) -> list[Match]:
         """Locate every instance of a target. Returns [] if none found."""
         return self.resolver.resolve_all(target)
+
+    def screenshot(self, path=None, *, region=None):
+        """Capture the screen. Saves to ``path`` if given, else returns a PIL.Image."""
+        self._begin("screenshot")
+        if path:
+            self.screen.save(path, region)
+            result = path
+        else:
+            result = self.screen.capture(region)
+        self._end("screenshot", path=path)
+        return result
+
+    def read_text(self, *, region=None) -> str:
+        """OCR the screen (or a region) and return the recognised text."""
+        self._begin("read_text")
+        text = self.resolver.ocr().text(region=region)
+        self._end("read_text", chars=len(text))
+        return text
 
     def exists(self, target) -> bool:
         try:
