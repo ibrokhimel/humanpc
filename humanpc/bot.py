@@ -261,11 +261,29 @@ class Bot:
         return (px, py)
 
     def _correct_cursor(self, target) -> None:
-        """After relative moves, nudge out any pointer-acceleration drift."""
+        """After relative moves, nudge out any pointer-acceleration drift.
+
+        A single relative nudge is itself shaped by the OS pointer-acceleration
+        curve, so one correction can over/undershoot the target. Iterate relative
+        nudges until the cursor lands exactly (residual deltas shrink toward 1:1)
+        or a nudge stops making progress. With "Enhance pointer precision" on, a
+        1-px relative delta can be scaled sub-unity and round to 0 px — i.e. the
+        last pixel is not expressible relatively — so snap any final residual with
+        a single absolute move to guarantee an exact landing. The whole trajectory
+        and the bulk of the drift correction still go through relative motion.
+        """
         tx, ty = target.as_int()
-        cx, cy = self.driver.position()
-        if (cx, cy) != (tx, ty):
+        last = None
+        for _ in range(12):
+            cx, cy = self.driver.position()
+            if (cx, cy) == (tx, ty):
+                return
+            if (cx, cy) == last:  # relative nudge swallowed by acceleration -> stop
+                break
+            last = (cx, cy)
             self.driver.move_relative(tx - cx, ty - cy)
+        if self.driver.position() != (tx, ty):
+            self.driver.move(tx, ty)  # absolute snap for the EPP-unexpressible residual
 
     def click(self, target=None, *, button: str = "left", clicks: int = 1) -> "Bot":
         if target is not None:
