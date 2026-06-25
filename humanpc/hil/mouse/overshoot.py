@@ -19,9 +19,9 @@ from .step import MouseStep
 class OvershootSimulator:
     def __init__(
         self,
-        probability: float = 0.35,
-        min_distance: float = 180.0,
-        range_px: tuple[float, float] = (6.0, 16.0),
+        probability: float = 0.5,
+        min_distance: float = 110.0,
+        range_px: tuple[float, float] = (8.0, 18.0),
         corrections: tuple[int, int] = (1, 2),
         gain_range: tuple[float, float] = (0.6, 0.8),
     ):
@@ -37,7 +37,15 @@ class OvershootSimulator:
         if rng.random() > self.probability:
             return plan
 
-        prev = plan[-2].point
+        # Approach direction from a point clearly BEFORE the target. Using the
+        # immediate predecessor is unstable: after jitter it sits ~1 px from the
+        # target, so target-prev is a tiny noise vector that normalises to a random
+        # direction — the cursor then 'overshoots' sideways/backward (a glitch).
+        prev = plan[0].point
+        for st in reversed(plan[:-1]):
+            if math.hypot(target.x - st.point.x, target.y - st.point.y) >= 14.0:
+                prev = st.point
+                break
         dx = target.x - prev.x
         dy = target.y - prev.y
         d = math.hypot(dx, dy) or 1.0
