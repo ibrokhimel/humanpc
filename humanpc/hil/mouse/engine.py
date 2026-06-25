@@ -28,8 +28,10 @@ class MouseTrajectoryEngine:
         max_steps: int = 120,
         px_per_step: float = 7.0,
         curve_slow_gain: float = 0.7,
-        settle_probability: float = 0.3,
+        settle_probability: float = 0.5,
         settle_min_distance: float = 60.0,
+        dt_jitter: tuple[float, float] = (0.75, 1.30),
+        micro_pause_probability: float = 0.45,
     ):
         self.bezier = bezier or BezierPathGenerator()
         self.velocity = velocity or VelocityProfile()
@@ -41,6 +43,8 @@ class MouseTrajectoryEngine:
         self.curve_slow_gain = curve_slow_gain
         self.settle_probability = settle_probability
         self.settle_min_distance = settle_min_distance
+        self.dt_jitter = dt_jitter
+        self.micro_pause_probability = micro_pause_probability
 
     def _step_count(self, dist: float) -> int:
         return int(max(self.min_steps, min(self.max_steps, dist / self.px_per_step + self.min_steps)))
@@ -61,6 +65,25 @@ class MouseTrajectoryEngine:
             w[i - 1] *= factor
             w[i] *= factor
         return w
+
+    def _irregularise(self, dts: list[float], rng) -> list[float]:
+        """Break the smooth, uniform cadence into something human: jitter every
+        step's dwell (irregular speed / variable acceleration) and occasionally
+        insert a longer micro-pause — a mid-movement hesitation. A constant,
+        uniformly-accelerated glide is a classic bot tell."""
+        lo, hi = self.dt_jitter
+        out = [d * rng.uniform(lo, hi) for d in dts]
+        # Keep hesitations in the early/middle of the move, never on the
+        # decelerating tail — a pause right before the landing/overshoot reads as
+        # "stop, then jump".
+        tail = max(1, int(len(out) * 0.7))
+        if len(out) > 6 and rng.random() < self.micro_pause_probability:
+            for _ in range(rng.randint(1, 2)):
+                k = rng.randint(1, tail)
+                # Long-tailed (lognormal) hesitation: usually brief, occasionally
+                # long — human pause intervals are heavy-tailed, not uniform.
+                out[k] += min(0.45, math.exp(rng.gauss(math.log(0.06), 0.6)))
+        return out
 
     def _settle(self, plan: list[MouseStep], target: Point, dist: float, rng) -> None:
         """Tiny residual micro-movements after landing, before the click."""
@@ -101,6 +124,7 @@ class MouseTrajectoryEngine:
         weights = self._dt_weights(points)
         wsum = sum(weights) or 1.0
         dts = [total * w / wsum for w in weights]
+        dts = self._irregularise(dts, rng)
 
         points = self.jitter.inject(points, total / (steps - 1), rng)
 

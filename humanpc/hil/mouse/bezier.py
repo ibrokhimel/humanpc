@@ -34,7 +34,7 @@ class CubicBezier:
 
 
 class BezierPathGenerator:
-    def __init__(self, curve_strength: float = 0.3, control_variance: float = 0.2):
+    def __init__(self, curve_strength: float = 0.42, control_variance: float = 0.3):
         self.curve_strength = curve_strength
         self.control_variance = control_variance
 

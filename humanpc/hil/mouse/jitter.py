@@ -22,8 +22,8 @@ class JitterInjector:
     def __init__(
         self,
         base_amplitude: float = 0.6,
-        velocity_factor: float = 0.08,
-        max_amplitude: float = 3.5,
+        velocity_factor: float = 0.06,
+        max_amplitude: float = 2.5,
         colored: bool = True,
         tremor_amplitude: float = 0.35,
     ):

@@ -76,9 +76,9 @@ def sample_individual(rng) -> Individual:
     error_rate = min(0.18, max(0.005, math.exp(math.log(0.045) - 0.3 * z + rng.gauss(0.0, 0.3))))
     dwell_median = min(0.16, max(0.04, 0.095 - 0.014 * z + rng.gauss(0.0, 0.012)))
     reaction = min(0.5, max(0.12, 0.26 - 0.04 * z + rng.gauss(0.0, 0.04)))
-    curve_strength = min(0.6, max(0.12, 0.30 + rng.gauss(0.0, 0.08)))
+    curve_strength = min(0.7, max(0.20, 0.45 + rng.gauss(0.0, 0.10)))
     jitter_scale = min(1.8, max(0.4, rng.gauss(1.0, 0.25)))
-    overshoot_prob = min(0.7, max(0.1, 0.35 + rng.gauss(0.0, 0.12)))
+    overshoot_prob = min(0.85, max(0.2, 0.50 + rng.gauss(0.0, 0.14)))
     move_speed = min(1.8, max(0.5, 1.0 - 0.12 * z + rng.gauss(0.0, 0.12)))
     return Individual(
         base_wpm=base_wpm,

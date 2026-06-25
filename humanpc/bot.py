@@ -39,6 +39,14 @@ from .system.apps import AppProcess, launch
 from .targeting import Match, Resolver
 from .windows import Window, WindowManager
 
+# Per-emit relative-mode delta bounds (px). _REL_STEP_PX caps each chunk just
+# under the pointer-acceleration ("Enhance pointer precision") threshold so deltas
+# pass through ~1:1 instead of being amplified. _REL_MIN_PX is the smallest delta
+# the curve can still express — below it a relative move rounds to 0 px, so we
+# defer rather than stutter in place.
+_REL_STEP_PX = 6
+_REL_MIN_PX = 2
+
 # Which behavioural state each action implies (for bot.behavior observability).
 _ACTION_STATES = {
     "move_to": BehaviorState.MOVING,
@@ -116,6 +124,11 @@ class Bot:
                 always_correct=self.config.always_correct_typing,
             )
             self._move_speed = 1.0
+        if self.config.relative_mouse:
+            # The settle phase's sub-pixel micro-moves don't survive relative
+            # emission (acceleration swallows them) and read as an end-of-move
+            # twitch, so skip them in relative mode.
+            self._mouse.settle_probability = 0.0
         self._timing = HumanTimingManager()
         self._session = SessionState()
         self._resolver = resolver  # default built lazily (cheap; finders load on use)
@@ -239,56 +252,80 @@ class Bot:
             target_size=size,
             speed_multiplier=self._persona.speed_multiplier * self._move_speed * self._tempo.value,
         )
-        cur = start.as_int()
-        for step in plan:
-            self.killswitch.check()
-            cur = self._emit_move(cur, step.point)
-            self._sleep(step.dt)
-        if self.config.relative_mouse:
-            self._correct_cursor(point)
+        self._run_plan(plan, point)
         self._end("move_to", x=round(point.x), y=round(point.y), via=match.method)
         return self
 
-    def _emit_move(self, cur: tuple[int, int], point) -> tuple[int, int]:
-        """Emit one move step (absolute by default, relative if configured)."""
-        px, py = point.as_int()
+    def _run_plan(self, plan, target) -> None:
+        """Execute a planned trajectory step-by-step against the driver.
+
+        Absolute mode: one positioned move per step, then the step's dwell.
+        Relative mode: glide each step (see ``_glide_relative``), then snap the
+        final residual the OS acceleration curve can't express relatively.
+        """
+        for step in plan:
+            self.killswitch.check()
+            if self.config.relative_mouse:
+                self._glide_relative(step.point, step.dt)
+            else:
+                px, py = step.point.as_int()
+                self.driver.move(px, py)
+                self._sleep(step.dt)
         if self.config.relative_mouse:
-            dx, dy = px - cur[0], py - cur[1]
-            if dx or dy:
-                self.driver.move_relative(dx, dy)
-        else:
-            self.driver.move(px, py)
-        return (px, py)
+            self._correct_cursor(target)
+
+    def _glide_relative(self, point, dt: float) -> None:
+        """Glide toward ``point`` with relative deltas, smoothly, over ``dt``.
+
+        Three things keep relative motion from looking robotic OR glitchy:
+          * **closed-loop** — aim from the cursor's ACTUAL position so
+            pointer-acceleration error can't accumulate and fling the cursor off;
+          * **small chunks** (<=``_REL_STEP_PX``) — each delta stays in the OS
+            ballistics curve's ~1:1 region instead of being amplified;
+          * **time-spread** — the chunks' sleeps add up to ``dt`` so the cursor
+            moves continuously in time, instead of bursting all the motion then
+            freezing for the step (which reads as a stutter while gliding).
+        Deltas the curve can't express relatively (<``_REL_MIN_PX`` — it rounds
+        them to 0 px) are deferred to the next step / the final snap, so the cursor
+        never creeps in sub-pixel stutters near the target.
+        """
+        tx, ty = point.as_int()
+        cx, cy = self.driver.position()
+        dx, dy = tx - cx, ty - cy
+        if max(abs(dx), abs(dy)) < _REL_MIN_PX:
+            self._sleep(dt)
+            return
+        n = (max(abs(dx), abs(dy)) + _REL_STEP_PX - 1) // _REL_STEP_PX  # ceil
+        slice_dt = dt / n
+        ex = ey = 0
+        for i in range(1, n + 1):
+            tx_i, ty_i = round(dx * i / n), round(dy * i / n)
+            sx, sy = tx_i - ex, ty_i - ey
+            if sx or sy:
+                self.driver.move_relative(sx, sy)
+                ex, ey = tx_i, ty_i
+            self._sleep(slice_dt)
 
     def _correct_cursor(self, target) -> None:
-        """After relative moves, nudge out any pointer-acceleration drift.
+        """Land exactly on target after a relative glide.
 
-        A single relative nudge is itself shaped by the OS pointer-acceleration
-        curve, so one correction can over/undershoot the target. Iterate relative
-        nudges until the cursor lands exactly (residual deltas shrink toward 1:1)
-        or a nudge stops making progress. With "Enhance pointer precision" on, a
-        1-px relative delta can be scaled sub-unity and round to 0 px — i.e. the
-        last pixel is not expressible relatively — so snap any final residual with
-        a single absolute move to guarantee an exact landing. The whole trajectory
-        and the bulk of the drift correction still go through relative motion.
+        Closed-loop gliding already leaves the cursor within a few px, and pointer
+        acceleration can't express the final 1-2 px as a relative delta (it scales
+        them toward 0 px), so finish with one clean absolute snap rather than
+        creeping in with sub-pixel relative nudges — that creep is what read as an
+        end-of-move 'glitch' when the cursor stopped.
         """
         tx, ty = target.as_int()
-        last = None
-        for _ in range(12):
-            cx, cy = self.driver.position()
-            if (cx, cy) == (tx, ty):
-                return
-            if (cx, cy) == last:  # relative nudge swallowed by acceleration -> stop
-                break
-            last = (cx, cy)
-            self.driver.move_relative(tx - cx, ty - cy)
         if self.driver.position() != (tx, ty):
-            self.driver.move(tx, ty)  # absolute snap for the EPP-unexpressible residual
+            self.driver.move(tx, ty)
 
     def click(self, target=None, *, button: str = "left", clicks: int = 1) -> "Bot":
         if target is not None:
             self.move_to(target)
         self._begin("click")
+        # Natural hesitation: humans don't fire the instant the cursor lands —
+        # a brief pause precedes committing the press.
+        self._sleep(self._rng.uniform(0.03, 0.19) * self._pace())
         for n in range(clicks):
             self.killswitch.check()
             self.driver.mouse_down(button)
@@ -326,13 +363,7 @@ class Bot:
             target_size=match.size,
             speed_multiplier=self._persona.speed_multiplier * self._move_speed * self._tempo.value,
         )
-        cur = start.as_int()
-        for step in plan:
-            self.killswitch.check()
-            cur = self._emit_move(cur, step.point)
-            self._sleep(step.dt)
-        if self.config.relative_mouse:
-            self._correct_cursor(point)
+        self._run_plan(plan, point)
         self._sleep(self._rng.uniform(0.05, 0.12))  # settle before releasing
         self.driver.mouse_up(button)
         self._end("drag", x=round(point.x), y=round(point.y), button=button, via=match.method)
