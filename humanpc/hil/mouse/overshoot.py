@@ -1,8 +1,11 @@
-"""Target overshoot + correction.
+"""Target overshoot + corrective submovements.
 
-For longer moves, humans frequently sail slightly past a target and snap back. We
-replace the final landing point with a point just beyond the target, then append a
-quick correction back onto the target so the cursor still ends exactly on it.
+The optimized-submovement model of human aiming: a fast ballistic phase often
+sails slightly past the target, then **one or more decaying corrective
+submovements** home in. We replace the final landing point with a point just
+beyond the target, then approach back with a small number of corrections each
+covering most (but not all) of the remaining error, so the cursor converges from
+the overshoot side and lands exactly on the target.
 """
 
 from __future__ import annotations
@@ -19,10 +22,14 @@ class OvershootSimulator:
         probability: float = 0.35,
         min_distance: float = 180.0,
         range_px: tuple[float, float] = (6.0, 16.0),
+        corrections: tuple[int, int] = (1, 2),
+        gain_range: tuple[float, float] = (0.6, 0.8),
     ):
         self.probability = probability
         self.min_distance = min_distance
         self.range_px = range_px
+        self.corrections = corrections
+        self.gain_range = gain_range
 
     def apply(self, plan: list[MouseStep], target: Point, distance: float, rng) -> list[MouseStep]:
         if distance < self.min_distance or len(plan) < 2:
@@ -39,5 +46,13 @@ class OvershootSimulator:
 
         last_dt = plan[-1].dt
         plan[-1] = MouseStep(beyond, last_dt)
-        plan.append(MouseStep(target, rng.uniform(0.04, 0.09)))  # correction back
+
+        # Decaying corrective submovements: each closes most of the remaining gap.
+        n = rng.randint(*self.corrections)
+        cur = beyond
+        for _ in range(max(1, n) - 1):
+            gain = rng.uniform(*self.gain_range)
+            cur = Point(cur.x + (target.x - cur.x) * gain, cur.y + (target.y - cur.y) * gain)
+            plan.append(MouseStep(cur, rng.uniform(0.03, 0.07)))
+        plan.append(MouseStep(target, rng.uniform(0.04, 0.09)))  # final exact landing
         return plan

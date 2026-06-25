@@ -3,6 +3,7 @@ from __future__ import annotations
 from .bezier import BezierPathGenerator, CubicBezier
 from .engine import MouseTrajectoryEngine
 from .jitter import JitterInjector
+from .noise import PinkNoise, Tremor
 from .overshoot import OvershootSimulator
 from .step import MouseStep
 from .velocity import VelocityProfile
@@ -15,4 +16,6 @@ __all__ = [
     "VelocityProfile",
     "JitterInjector",
     "OvershootSimulator",
+    "PinkNoise",
+    "Tremor",
 ]
