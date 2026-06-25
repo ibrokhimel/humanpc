@@ -35,3 +35,37 @@ def neighbor(ch: str, rng) -> str:
         return ch
     pick = rng.choice(options)
     return pick.upper() if ch.isupper() else pick
+
+
+# Touch-typing finger assignment (QWERTY). Same-finger digraphs are slow; an
+# alternating-hand digraph is fast. Keyed by lowercase character.
+FINGER: dict[str, str] = {}
+for _finger, _keys in {
+    "L_pinky": "qaz1", "L_ring": "wsx2", "L_mid": "edc3", "L_index": "rfvtgb45",
+    "R_index": "yhnujm67", "R_mid": "ik8", "R_ring": "ol9", "R_pinky": "p0",
+}.items():
+    for _k in _keys:
+        FINGER[_k] = _finger
+
+# Symbols that require the Shift key on a US layout (uppercase letters too).
+SHIFTED_SYMBOLS = frozenset('~!@#$%^&*()_+{}|:"<>?')
+
+
+def needs_shift(ch: str) -> bool:
+    """True if producing ``ch`` requires holding Shift (US QWERTY)."""
+    return ch.isupper() or ch in SHIFTED_SYMBOLS
+
+
+def _hand(ch: str) -> str | None:
+    f = FINGER.get(ch.lower())
+    return f[0] if f else None  # "L" or "R"
+
+
+def same_finger(a: str, b: str) -> bool:
+    fa, fb = FINGER.get(a.lower()), FINGER.get(b.lower())
+    return fa is not None and fa == fb
+
+
+def alternating_hands(a: str, b: str) -> bool:
+    ha, hb = _hand(a), _hand(b)
+    return ha is not None and hb is not None and ha != hb

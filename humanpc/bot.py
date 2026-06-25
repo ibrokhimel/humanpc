@@ -275,6 +275,12 @@ class Bot:
         for event in self._typing.plan(text, self._rng, base_wpm=base_wpm):
             self.killswitch.check()
             self._sleep(event.delay)
+            # Held modifiers (e.g. Shift for a capital) press first and overlap
+            # the keystroke, then release after it — real modifier dynamics.
+            mods = getattr(event, "modifiers", ())
+            for m in mods:
+                self.driver.key_down(m)
+                self._sleep(self._rng.uniform(0.01, 0.03))
             # Down -> hold(dwell) -> up so the keystroke has a realistic key-hold
             # time (a primary keystroke-dynamics signal), instead of an atomic
             # zero-dwell emit. Drivers without separable injection fall back
@@ -287,6 +293,9 @@ class Bot:
                 self.driver.key_down(event.value)
                 self._sleep(event.dwell)
                 self.driver.key_up(event.value)
+            for m in reversed(mods):
+                self._sleep(self._rng.uniform(0.005, 0.02))
+                self.driver.key_up(m)
         self._end("type", length=len(text))
         return self
 
