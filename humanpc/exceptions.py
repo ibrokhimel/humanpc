@@ -17,3 +17,7 @@ class TargetNotFound(HumanpcError):
 
 class DriverError(HumanpcError):
     """Raised when an input/screen backend fails or is unavailable."""
+
+
+class VerificationError(HumanpcError):
+    """Raised when an action could not be confirmed to have taken effect."""
