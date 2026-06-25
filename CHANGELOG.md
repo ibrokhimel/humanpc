@@ -5,7 +5,7 @@ was committed directly to `main` (see [`docs/BUILD_PHASES.md`](docs/BUILD_PHASES
 
 ## [Unreleased]
 
-### Provenance & timing (Tier 0 — see [`GAP_ANALYSIS.md`](GAP_ANALYSIS.md))
+### Provenance & timing (Tier 0)
 - **Keystroke dwell:** typed characters now go through `char_down → hold → char_up`
   with a realistic, right-skewed key-hold time (`hil/typing/DwellModel`) instead of
   an atomic zero-dwell emit. `InputDriver` gains `char_down`/`char_up` (default
