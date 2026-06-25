@@ -16,7 +16,7 @@ import time
 from contextlib import contextmanager
 
 from .config import Config, Persona, get_persona
-from .exceptions import TargetNotFound
+from .exceptions import TargetNotFound, VerificationError
 from .geometry import Point
 from .hil import (
     BehaviorState,
@@ -417,6 +417,45 @@ class Bot:
         self._sleep(delay)
         chars = content if isinstance(content, int) else len(str(content))
         self._end("read", chars=chars, delay=round(delay, 4))
+        return self
+
+    # --- verification -----------------------------------------------------
+    def verify(self, check, *, attempts: int = 3, interval: float = 0.25, retry=None) -> bool:
+        """Confirm an action took effect: poll ``check()`` until it is truthy.
+
+        Optionally run ``retry()`` (e.g. re-click) between attempts. Returns the
+        boolean outcome — humans don't blindly assume a click landed; they look.
+        """
+        attempts = max(1, attempts)
+        for i in range(attempts):
+            try:
+                if check():
+                    return True
+            except (TargetNotFound, TypeError):
+                pass
+            if i < attempts - 1:
+                if retry is not None:
+                    retry()
+                if not self.dry_run and interval > 0:
+                    time.sleep(interval)
+        return False
+
+    def ensure(self, check, *, attempts: int = 3, interval: float = 0.25, retry=None, message=None) -> "Bot":
+        """Like :meth:`verify`, but raise ``VerificationError`` if never satisfied."""
+        if not self.verify(check, attempts=attempts, interval=interval, retry=retry):
+            raise VerificationError(message or "action could not be verified")
+        return self
+
+    def click_until(self, target, until, *, attempts: int = 3, interval: float = 0.3, button: str = "left") -> "Bot":
+        """Click ``target`` and re-click until ``until()`` holds (or attempts run out).
+
+        Action verification for the common case: a click that must produce a UI
+        change (a dialog opens, a state toggles). Raises if it never takes effect.
+        """
+        self.click(target, button=button)
+        if not self.verify(until, attempts=attempts, interval=interval,
+                           retry=lambda: self.click(target, button=button)):
+            raise VerificationError(f"click on {target!r} did not produce the expected result")
         return self
 
     # --- finding ----------------------------------------------------------
