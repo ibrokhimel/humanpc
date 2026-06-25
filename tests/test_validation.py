@@ -11,6 +11,8 @@ from humanpc.validation import (
     mouse_realism_checks,
     skewness,
     threshold_accuracy,
+    trajectory_features,
+    trajectory_realism_report,
     typing_features,
     typing_realism_checks,
 )
@@ -18,6 +20,24 @@ from humanpc.validation import (
 
 def _realistic_mouse():
     return MouseTrajectoryEngine(settle_probability=0.0)
+
+
+def _plan_to_xyt(plan):
+    xs = [s.point.x for s in plan]
+    ys = [s.point.y for s in plan]
+    ts, t = [0.0], 0.0
+    for s in plan[1:]:
+        t += s.dt
+        ts.append(t)
+    return xs, ys, ts
+
+
+def _naive_bot_xyt(start, end, n=60, total=0.4):
+    """A classic bot trace: straight line at constant velocity, uniform time."""
+    xs = [start[0] + (end[0] - start[0]) * k / (n - 1) for k in range(n)]
+    ys = [start[1] + (end[1] - start[1]) * k / (n - 1) for k in range(n)]
+    ts = [total * k / (n - 1) for k in range(n)]
+    return xs, ys, ts
 
 
 # --- feature helpers --------------------------------------------------------
@@ -54,6 +74,36 @@ def test_discriminator_separates_colored_from_white_jitter():
         col_ac.append(lag1_autocorr([p.y for p in cpts[1:-1]]))
         wht_ac.append(lag1_autocorr([p.y for p in wpts[1:-1]]))
     assert threshold_accuracy(col_ac, wht_ac) > 0.85
+
+
+# --- trajectory-level detector features -------------------------------------
+
+def test_realistic_trajectory_scores_higher_than_naive_bot():
+    eng = _realistic_mouse()
+    human, bot = [], []
+    for s in range(20):
+        plan = eng.plan((0, 0), (700, 120), rng=random.Random(s))
+        human.append(trajectory_realism_report(*_plan_to_xyt(plan))["human_score"])
+        bot.append(trajectory_realism_report(*_naive_bot_xyt((0, 0), (700, 120)))["human_score"])
+    assert sum(human) / len(human) > sum(bot) / len(bot) + 0.3
+
+
+def test_discriminator_separates_realistic_from_straight_bot():
+    eng = _realistic_mouse()
+    human, bot = [], []
+    for s in range(25):
+        plan = eng.plan((0, 0), (600, 220), rng=random.Random(s))
+        human.append(trajectory_features(*_plan_to_xyt(plan))["speed_skew"])
+        bot.append(trajectory_features(*_naive_bot_xyt((0, 0), (600, 220)))["speed_skew"])
+    assert threshold_accuracy(human, bot) > 0.8
+
+
+def test_straight_constant_velocity_bot_fails_checks():
+    rep = trajectory_realism_report(*_naive_bot_xyt((0, 0), (800, 0)))
+    # A perfectly direct, constant-speed line is flagged on every spatial/kinematic axis.
+    assert not rep["checks"]["straightness"]      # too direct
+    assert not rep["checks"]["decel_ratio"]       # no homing deceleration
+    assert rep["human_score"] < 0.4
 
 
 # --- typing realism checks --------------------------------------------------
