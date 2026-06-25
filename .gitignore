@@ -42,3 +42,7 @@ secrets.*
 audit/
 screenshots/
 captures/
+
+# local dev
+.venv/
+.claude-flow/
