@@ -14,8 +14,10 @@ was committed directly to `main` (see [`docs/BUILD_PHASES.md`](docs/BUILD_PHASES
   plus 1 ms Windows timer tick (`hil/precise`), so sub-frame delays are realised
   instead of quantising to the ~15.6 ms scheduler tick. Toggle: `Config.precision_timing`.
 - **Relative mouse motion (opt-in):** `Config.relative_mouse` injects relative deltas
-  through the OS pointer-acceleration curve, with a final correction nudge. New
-  `InputDriver.move_relative` primitive. *(Needs validation on real Windows.)*
+  through the OS pointer-acceleration curve, then iteratively corrects residual drift
+  to land exactly on target (with an absolute snap for the final sub-pixel that
+  "Enhance pointer precision" cannot express relatively). New
+  `InputDriver.move_relative` primitive. *(Validated on Windows 11.)*
 - **Injected-flag honesty:** `SendInputDriver(extra_info=...)` tags `dwExtraInfo`.
   Documented clearly that user-mode `SendInput` **cannot** remove the
   `LLKHF_INJECTED` flag — that requires a kernel/hardware HID backend, which plugs
