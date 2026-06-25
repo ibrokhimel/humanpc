@@ -67,6 +67,9 @@ class Config:
     precision_timing: bool = True         # high-resolution sleep + 1ms timer tick (Windows)
     relative_mouse: bool = False          # inject relative deltas (through pointer ballistics) vs absolute
 
+    # Individuality (Tier 4): sample a stable per-instance behavioural profile
+    individuality: bool = True            # each Bot is a distinct, consistent person
+
     # Determinism for tests / reproducible sessions
     seed: int | None = None
 

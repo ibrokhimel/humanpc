@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from .behavior import BehaviorState, BehaviorTracker
 from .idle import IdleDriftLoop, IdleMovementGenerator
+from .individual import ActionTempo, Individual, sample_individual
 from .mouse import MouseStep, MouseTrajectoryEngine
 from .scroll import plan_scroll
 from .session import SessionState
@@ -23,6 +24,9 @@ __all__ = [
     "KeyEvent",
     "HumanTimingManager",
     "SessionState",
+    "Individual",
+    "ActionTempo",
+    "sample_individual",
     "plan_scroll",
     "BehaviorState",
     "BehaviorTracker",
