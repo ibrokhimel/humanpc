@@ -10,6 +10,27 @@
 
 ---
 
+## Implementation status
+
+All seven tiers have been implemented on the `tier0-provenance` branch (one commit
+per tier; 223 tests passing on macOS, 5 Windows-only tests skipped). Items needing a
+real Windows desktop or a human dataset are flagged.
+
+| Tier | Status | Notes |
+|---|---|---|
+| **0 — Provenance** | ✅ implemented (0.1 not software-fixable) | keystroke dwell, high-res timing, relative-mouse (opt-in). Injected-flag needs HW/kernel backend. |
+| **1 — Motor signal** | ✅ implemented | 1/f+tremor noise, asymmetric velocity, curvature timing, decaying submovements, settle. |
+| **2 — Typing** | ✅ implemented | lognormal IKIs, finger/hand digraphs, transposition+doubling typos, Shift dynamics. *(rollover/delayed-noticing deferred)* |
+| **3 — Cognition** | ✅ implemented | fixation reading + scan mode, Hick–Hyman decisions, session warm-up/fatigue/distraction. |
+| **4 — Individuality** | ✅ implemented | sampled correlated-trait persona (persisted), AR(1) action tempo. |
+| **5 — Modalities** | ✅ implemented | scroll momentum + reading coupling + overshoot, drag-and-drop. *(kbd-nav/parking deferred)* |
+| **6 — Validation** | ✅ implemented | feature extractors, literature-range checks, discriminator. *(needs real human corpus to calibrate)* |
+| **7 — Functional** | ✅ core implemented | action verification (verify/ensure/click_until). *(native macOS/Linux drivers, semantic targeting deferred)* |
+
+**Needs Windows validation:** injected-flag behavior, 1 ms timer tick (`timeBeginPeriod`),
+relative-mouse motion through pointer acceleration, and the real `SendInput` dwell/shift paths
+— all implemented and unit-tested at the logic level but only runnable on Windows.
+
 ## Table of contents
 
 1. [How human interaction actually works (the reference model)](#1-how-human-interaction-actually-works)
