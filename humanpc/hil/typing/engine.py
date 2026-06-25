@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .dwell import DwellModel
 from .errors import ErrorModel
 from .keys import neighbor
 from .pause import PauseModel
@@ -24,6 +25,7 @@ class KeyEvent:
     kind: str    # "char" | "key"
     value: str   # the character, or a key name like "backspace"
     delay: float  # seconds to wait BEFORE performing this event
+    dwell: float = 0.0  # seconds to HOLD the key down (down -> hold -> up)
 
 
 class HumanTypingEngine:
@@ -38,6 +40,7 @@ class HumanTypingEngine:
     ):
         self.speed = SpeedModel()
         self.pause = PauseModel()
+        self.dwell = DwellModel()
         self.errors = ErrorModel(error_probability)
         self.errors_enabled = errors_enabled
         self.always_correct = always_correct
@@ -55,6 +58,10 @@ class HumanTypingEngine:
             end += 1
         return text[start:end]
 
+    def _ev(self, kind: str, value: str, delay: float, rng) -> KeyEvent:
+        """Build a KeyEvent, attaching a realistic key-hold (dwell) time."""
+        return KeyEvent(kind, value, delay, self.dwell.hold(value, rng))
+
     def plan(self, text: str, rng, base_wpm: float = 72.0) -> list[KeyEvent]:
         events: list[KeyEvent] = []
         prev = None
@@ -66,17 +73,17 @@ class HumanTypingEngine:
             if self.errors_enabled and self.errors.should_error(ch, rng):
                 corrected = self.always_correct or rng.random() < self.notice_probability
                 if self.errors.kind(rng) == "substitution":
-                    events.append(KeyEvent("char", neighbor(ch, rng), delay))
+                    events.append(self._ev("char", neighbor(ch, rng), delay, rng))
                     if corrected:
-                        events.append(KeyEvent("key", "backspace", rng.uniform(*self.reaction)))
-                        events.append(KeyEvent("char", ch, rng.uniform(*self.correction)))
+                        events.append(self._ev("key", "backspace", rng.uniform(*self.reaction), rng))
+                        events.append(self._ev("char", ch, rng.uniform(*self.correction), rng))
                 else:  # insertion
-                    events.append(KeyEvent("char", ch, delay))
-                    events.append(KeyEvent("char", neighbor(ch, rng), rng.uniform(*self.correction)))
+                    events.append(self._ev("char", ch, delay, rng))
+                    events.append(self._ev("char", neighbor(ch, rng), rng.uniform(*self.correction), rng))
                     if corrected:
-                        events.append(KeyEvent("key", "backspace", rng.uniform(*self.reaction)))
+                        events.append(self._ev("key", "backspace", rng.uniform(*self.reaction), rng))
             else:
-                events.append(KeyEvent("char", ch, delay))
+                events.append(self._ev("char", ch, delay, rng))
 
             prev = ch
         return events

@@ -3,6 +3,26 @@
 All notable changes to **humanpc**. The framework was built in phases; each phase
 was committed directly to `main` (see [`docs/BUILD_PHASES.md`](docs/BUILD_PHASES.md)).
 
+## [Unreleased]
+
+### Provenance & timing (Tier 0 — see [`GAP_ANALYSIS.md`](GAP_ANALYSIS.md))
+- **Keystroke dwell:** typed characters now go through `char_down → hold → char_up`
+  with a realistic, right-skewed key-hold time (`hil/typing/DwellModel`) instead of
+  an atomic zero-dwell emit. `InputDriver` gains `char_down`/`char_up` (default
+  falls back to `write_char`); `SendInputDriver` implements true split injection.
+- **High-resolution timing:** `precise_sleep` (coarse sleep + sub-tick busy-wait)
+  plus 1 ms Windows timer tick (`hil/precise`), so sub-frame delays are realised
+  instead of quantising to the ~15.6 ms scheduler tick. Toggle: `Config.precision_timing`.
+- **Relative mouse motion (opt-in):** `Config.relative_mouse` injects relative deltas
+  through the OS pointer-acceleration curve, with a final correction nudge. New
+  `InputDriver.move_relative` primitive. *(Needs validation on real Windows.)*
+- **Injected-flag honesty:** `SendInputDriver(extra_info=...)` tags `dwExtraInfo`.
+  Documented clearly that user-mode `SendInput` **cannot** remove the
+  `LLKHF_INJECTED` flag — that requires a kernel/hardware HID backend, which plugs
+  into the existing `Bot(driver=...)` seam.
+- `Bot` is now a context manager (`with Bot() as bot: ...`) / has `close()` to
+  release the timer tick, idle drift, and kill-switch.
+
 ## [0.1.0] — 2026-06-11
 
 First feature-complete release: Phases 0–5. 146 tests; `import humanpc` loads zero

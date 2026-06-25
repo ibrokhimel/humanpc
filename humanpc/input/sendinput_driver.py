@@ -5,6 +5,18 @@ SendInput injects at a lower level and is generally honoured. Text is injected a
 Unicode (reliable for fields); named keys go through virtual-key codes.
 
 Windows-only. Constructed explicitly and passed to ``Bot(driver=SendInputDriver())``.
+
+Provenance limitation (important):
+    Any user-mode ``SendInput`` event carries the kernel ``LLMHF_INJECTED`` /
+    ``LLKHF_INJECTED`` flag, which a low-level hook (``WH_MOUSE_LL`` /
+    ``WH_KEYBOARD_LL``) or ``GetMessageExtraInfo`` can read as "synthetic". This
+    driver CANNOT remove that flag — no user-mode API can. Truly removing it
+    requires a kernel-mode driver, an interception driver, or a hardware HID
+    emulator. Such a backend plugs in via the same ``InputDriver`` seam (pass it
+    as ``Bot(driver=...)``). The ``extra_info`` tag below only stamps a signature
+    into ``dwExtraInfo`` so the bot can recognise its own events; it does not
+    hide them. This driver improves *behavioural* realism (separable key-hold via
+    char_down/char_up, relative motion through pointer ballistics), not provenance.
 """
 
 from __future__ import annotations
@@ -71,16 +83,19 @@ _SM_XV, _SM_YV, _SM_CXV, _SM_CYV = 76, 77, 78, 79
 
 
 class SendInputDriver(InputDriver):
-    def __init__(self):
+    def __init__(self, *, extra_info: int = 0):
         if not hasattr(ctypes, "windll"):
             raise DriverError("SendInputDriver is Windows-only")
         self._u32 = ctypes.windll.user32
+        # Stamped into every event's dwExtraInfo. Lets the bot identify its own
+        # input; does NOT mask the injected flag (see module docstring).
+        self._extra = ctypes.c_void_p(extra_info) if extra_info else None
 
     def _send(self, inp: _INPUT) -> None:
         self._u32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(_INPUT))
 
     def _mouse(self, flags: int, data: int = 0, dx: int = 0, dy: int = 0) -> None:
-        mi = _MOUSEINPUT(dx, dy, data & 0xFFFFFFFF, flags, 0, None)
+        mi = _MOUSEINPUT(dx, dy, data & 0xFFFFFFFF, flags, 0, self._extra)
         self._send(_INPUT(_INPUT_MOUSE, _UNION(mi=mi)))
 
     def move(self, x, y) -> None:
@@ -91,6 +106,16 @@ class SendInputDriver(InputDriver):
         nx = int((int(x) - vx) * 65535 / max(1, vw - 1))
         ny = int((int(y) - vy) * 65535 / max(1, vh - 1))
         self._mouse(_MOVE | _ABSOLUTE | _VIRTUALDESK, dx=nx, dy=ny)
+
+    def move_relative(self, dx, dy) -> None:
+        """Inject a relative move so it passes through pointer acceleration.
+
+        Unlike the absolute ``move`` above, relative deltas are shaped by the OS
+        ballistics curve and produce natural WM_INPUT raw-input streams. The Bot
+        issues a final correction nudge to absorb any acceleration drift.
+        """
+        if int(dx) or int(dy):
+            self._mouse(_MOVE, dx=int(dx), dy=int(dy))
 
     def mouse_down(self, button: Button = "left") -> None:
         self._mouse({"left": _LEFTDOWN, "right": _RIGHTDOWN, "middle": _MIDDLEDOWN}[button])
@@ -103,7 +128,7 @@ class SendInputDriver(InputDriver):
             self._mouse(_WHEEL, data=int(dy) * 120)
 
     def _key(self, vk: int, flags: int = 0) -> None:
-        ki = _KEYBDINPUT(vk, 0, flags, 0, None)
+        ki = _KEYBDINPUT(vk, 0, flags, 0, self._extra)
         self._send(_INPUT(_INPUT_KEYBOARD, _UNION(ki=ki)))
 
     def key_down(self, key: str) -> None:
@@ -112,12 +137,20 @@ class SendInputDriver(InputDriver):
     def key_up(self, key: str) -> None:
         self._key(_vk_code(key), _KEYUP)
 
+    def _unicode(self, char: str, flags: int) -> None:
+        ki = _KEYBDINPUT(0, ord(char), _UNICODE | flags, 0, self._extra)
+        self._send(_INPUT(_INPUT_KEYBOARD, _UNION(ki=ki)))
+
+    def char_down(self, char: str) -> None:
+        self._unicode(char, 0)
+
+    def char_up(self, char: str) -> None:
+        self._unicode(char, _KEYUP)
+
     def write_char(self, char: str) -> None:
-        code = ord(char)
-        down = _KEYBDINPUT(0, code, _UNICODE, 0, None)
-        self._send(_INPUT(_INPUT_KEYBOARD, _UNION(ki=down)))
-        up = _KEYBDINPUT(0, code, _UNICODE | _KEYUP, 0, None)
-        self._send(_INPUT(_INPUT_KEYBOARD, _UNION(ki=up)))
+        # Atomic emit; the Bot uses char_down/char_up directly to insert a dwell.
+        self.char_down(char)
+        self.char_up(char)
 
     def position(self) -> tuple[int, int]:
         pt = wintypes.POINT()

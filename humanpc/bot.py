@@ -27,6 +27,7 @@ from .hil import (
     plan_scroll,
 )
 from .hil.idle import IdleDriftLoop
+from .hil.precise import begin_high_resolution, end_high_resolution, precise_sleep
 from .input import NullDriver, default_driver
 from .perception.dpi import set_dpi_awareness
 from .safety import AuditLog, KillSwitch, SafetyGuard
@@ -103,9 +104,12 @@ class Bot:
 
         # Dry-run never touches the OS. Real driver is created lazily on first use.
         self._driver = NullDriver() if self.dry_run else driver
+        self._precision = False
 
         if arm and not self.dry_run:
             self.killswitch.start()
+            if self.config.precision_timing:
+                self._precision = begin_high_resolution()
         if idle:
             self.start_idle()
 
@@ -174,7 +178,10 @@ class Bot:
     def _sleep(self, seconds: float) -> None:
         if self.dry_run or seconds <= 0:
             return
-        time.sleep(seconds)
+        if self.config.precision_timing:
+            precise_sleep(seconds)
+        else:
+            time.sleep(seconds)
 
     # --- personas ---------------------------------------------------------
     @contextmanager
@@ -201,12 +208,33 @@ class Bot:
             target_size=size,
             speed_multiplier=self._persona.speed_multiplier,
         )
+        cur = start.as_int()
         for step in plan:
             self.killswitch.check()
-            self.driver.move(*step.point.as_int())
+            cur = self._emit_move(cur, step.point)
             self._sleep(step.dt)
+        if self.config.relative_mouse:
+            self._correct_cursor(point)
         self._end("move_to", x=round(point.x), y=round(point.y), via=match.method)
         return self
+
+    def _emit_move(self, cur: tuple[int, int], point) -> tuple[int, int]:
+        """Emit one move step (absolute by default, relative if configured)."""
+        px, py = point.as_int()
+        if self.config.relative_mouse:
+            dx, dy = px - cur[0], py - cur[1]
+            if dx or dy:
+                self.driver.move_relative(dx, dy)
+        else:
+            self.driver.move(px, py)
+        return (px, py)
+
+    def _correct_cursor(self, target) -> None:
+        """After relative moves, nudge out any pointer-acceleration drift."""
+        tx, ty = target.as_int()
+        cx, cy = self.driver.position()
+        if (cx, cy) != (tx, ty):
+            self.driver.move_relative(tx - cx, ty - cy)
 
     def click(self, target=None, *, button: str = "left", clicks: int = 1) -> "Bot":
         if target is not None:
@@ -247,10 +275,18 @@ class Bot:
         for event in self._typing.plan(text, self._rng, base_wpm=base_wpm):
             self.killswitch.check()
             self._sleep(event.delay)
+            # Down -> hold(dwell) -> up so the keystroke has a realistic key-hold
+            # time (a primary keystroke-dynamics signal), instead of an atomic
+            # zero-dwell emit. Drivers without separable injection fall back
+            # gracefully (see InputDriver.char_down/char_up).
             if event.kind == "char":
-                self.driver.write_char(event.value)
+                self.driver.char_down(event.value)
+                self._sleep(event.dwell)
+                self.driver.char_up(event.value)
             else:
-                self.driver.tap(event.value)
+                self.driver.key_down(event.value)
+                self._sleep(event.dwell)
+                self.driver.key_up(event.value)
         self._end("type", length=len(text))
         return self
 
@@ -414,3 +450,22 @@ class Bot:
             self._idle_loop.stop()
             self._idle_loop = None
         return self
+
+    # --- lifecycle --------------------------------------------------------
+    def close(self) -> "Bot":
+        """Release OS resources: stop idle drift, kill-switch, and timer tick."""
+        self.stop_idle()
+        if getattr(self, "_precision", False):
+            end_high_resolution()
+            self._precision = False
+        try:
+            self.killswitch.stop()
+        except Exception:
+            pass
+        return self
+
+    def __enter__(self) -> "Bot":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()

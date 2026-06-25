@@ -68,3 +68,18 @@ def test_bot_type_reproduces_text_through_driver():
         bot = Bot(dry_run=True, config=Config(seed=seed, typing_errors=True))
         bot.type(TEXT)
         assert _apply_driver(bot.driver.events) == TEXT
+
+
+def test_every_event_has_a_realistic_dwell():
+    # Tier 0: keystrokes must carry a non-zero key-hold (dwell) time, within bounds.
+    eng = HumanTypingEngine()
+    events = eng.plan(TEXT, random.Random(3))
+    assert events
+    for ev in events:
+        assert 0.02 <= ev.dwell <= 0.31  # clamped lognormal hold, never zero
+
+
+def test_dwell_varies_between_keystrokes():
+    eng = HumanTypingEngine(errors_enabled=False)
+    dwells = [ev.dwell for ev in eng.plan(TEXT, random.Random(4))]
+    assert len(set(round(d, 5) for d in dwells)) > 5  # not a constant hold

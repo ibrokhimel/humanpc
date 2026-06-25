@@ -63,6 +63,10 @@ class Config:
     typing_errors: bool = True            # inject realistic typos...
     always_correct_typing: bool = True    # ...but always self-correct -> final text exact
 
+    # Timing & input provenance (Tier 0)
+    precision_timing: bool = True         # high-resolution sleep + 1ms timer tick (Windows)
+    relative_mouse: bool = False          # inject relative deltas (through pointer ballistics) vs absolute
+
     # Determinism for tests / reproducible sessions
     seed: int | None = None
 

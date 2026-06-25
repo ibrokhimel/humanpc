@@ -41,6 +41,28 @@ class InputDriver(ABC):
     def position(self) -> tuple[int, int]:
         """Current cursor position."""
 
+    # Optional primitives with safe fallbacks --------------------------------
+    # Backends that can separate a character key-press into down/up events
+    # (e.g. the native SendInput driver) override these so the Bot can insert a
+    # realistic key-hold (dwell) between them. The default keeps the atomic
+    # behaviour, so a driver that only implements ``write_char`` still works —
+    # it just can't model dwell.
+    def char_down(self, char: str) -> None:
+        """Press a character key. Default: atomic emit (no separable hold)."""
+        self.write_char(char)
+
+    def char_up(self, char: str) -> None:
+        """Release a character key. Default: no-op (write_char already released)."""
+
+    def move_relative(self, dx: int, dy: int) -> None:
+        """Move by a relative delta. Default: compute the absolute target.
+
+        Native backends override this to inject true relative motion, which
+        passes through the OS pointer-acceleration curve (unlike absolute moves).
+        """
+        x, y = self.position()
+        self.move(int(x + dx), int(y + dy))
+
     # Convenience composites -------------------------------------------------
     def click(self, button: Button = "left") -> None:
         self.mouse_down(button)
