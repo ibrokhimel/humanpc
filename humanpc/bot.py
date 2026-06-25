@@ -263,16 +263,42 @@ class Bot:
         Relative mode: glide each step (see ``_glide_relative``), then snap the
         final residual the OS acceleration curve can't express relatively.
         """
-        for step in plan:
+        relative = self.config.relative_mouse
+        next_micro = self._rng.randint(8, 15) if relative else None
+        n = len(plan)
+        for idx, step in enumerate(plan):
             self.killswitch.check()
-            if self.config.relative_mouse:
+            if relative:
                 self._glide_relative(step.point, step.dt)
+                # Sparse visually-guided micro-corrections: closed-loop gliding is
+                # otherwise too smooth (EPP swallows the sub-2px jitter that gives
+                # absolute mode its direction-changes), so inject a few discrete
+                # lateral wobbles big enough to survive acceleration.
+                if idx >= next_micro and idx < n - 4:
+                    self._relative_microcorrect(step.dt)
+                    next_micro = idx + self._rng.randint(8, 15)
             else:
                 px, py = step.point.as_int()
                 self.driver.move(px, py)
                 self._sleep(step.dt)
-        if self.config.relative_mouse:
+        if relative:
             self._correct_cursor(target)
+
+    def _relative_microcorrect(self, dt: float) -> None:
+        """A tiny lateral excursion-and-return — a corrective sub-movement.
+
+        Net displacement ~0 (closed-loop gliding + the final snap absorb any
+        acceleration residue), but it adds the direction changes / path crossings a
+        mouse-dynamics detector expects, sized above the EPP floor so it survives.
+        """
+        w = self._rng.choice((-1, 1)) * self._rng.randint(_REL_MIN_PX + 1, 5)
+        if self._rng.random() < 0.5:
+            dx, dy = w, 0
+        else:
+            dx, dy = 0, w
+        self.driver.move_relative(dx, dy)
+        self._sleep(min(0.02, max(0.004, dt * 0.5)))
+        self.driver.move_relative(-dx, -dy)
 
     def _glide_relative(self, point, dt: float) -> None:
         """Glide toward ``point`` with relative deltas, smoothly, over ``dt``.
