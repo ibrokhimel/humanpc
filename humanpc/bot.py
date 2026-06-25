@@ -42,6 +42,7 @@ from .windows import Window, WindowManager
 # Which behavioural state each action implies (for bot.behavior observability).
 _ACTION_STATES = {
     "move_to": BehaviorState.MOVING,
+    "drag": BehaviorState.MOVING,
     "click": BehaviorState.CLICKING,
     "double_click": BehaviorState.CLICKING,
     "right_click": BehaviorState.CLICKING,
@@ -285,6 +286,39 @@ class Bot:
 
     def right_click(self, target=None) -> "Bot":
         return self.click(target, button="right", clicks=1)
+
+    def drag(self, to, *, frm=None, button: str = "left") -> "Bot":
+        """Press at the source, move to ``to`` with the button held, release.
+
+        ``frm`` (optional) is moved to first; otherwise the drag starts wherever
+        the cursor currently is. Both accept text / image / coordinate targets.
+        """
+        if frm is not None:
+            self.move_to(frm)
+        match = self._resolve(to)
+        point = match.center
+        self._begin("drag")
+        start = Point(*self.position())
+        self.driver.mouse_down(button)
+        self._sleep(self._rng.uniform(0.05, 0.12))  # grab before moving
+        plan = self._mouse.plan(
+            start,
+            point,
+            rng=self._rng,
+            target_size=match.size,
+            speed_multiplier=self._persona.speed_multiplier * self._move_speed * self._tempo.value,
+        )
+        cur = start.as_int()
+        for step in plan:
+            self.killswitch.check()
+            cur = self._emit_move(cur, step.point)
+            self._sleep(step.dt)
+        if self.config.relative_mouse:
+            self._correct_cursor(point)
+        self._sleep(self._rng.uniform(0.05, 0.12))  # settle before releasing
+        self.driver.mouse_up(button)
+        self._end("drag", x=round(point.x), y=round(point.y), button=button, via=match.method)
+        return self
 
     def scroll(self, amount: int, *, at=None) -> "Bot":
         if at is not None:
