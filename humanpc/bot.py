@@ -28,6 +28,7 @@ from .hil import (
     plan_scroll,
 )
 from .hil.idle import IdleDriftLoop
+from .hil.individual import ActionTempo, sample_individual
 from .hil.precise import begin_high_resolution, end_high_resolution, precise_sleep
 from .input import NullDriver, default_driver
 from .perception.dpi import set_dpi_awareness
@@ -69,6 +70,7 @@ class Bot:
         clipboard: Clipboard | None = None,
         idle: bool = False,
         arm: bool = True,
+        profile=None,
     ):
         self.config = config or Config()
         if persona:
@@ -87,12 +89,32 @@ class Bot:
         )
         self.guard = SafetyGuard(self.killswitch, max_actions=self.config.max_actions)
 
-        # Human Interaction Layer engines (pure planners; cheap to construct).
-        self._mouse = MouseTrajectoryEngine()
-        self._typing = HumanTypingEngine(
-            errors_enabled=self.config.typing_errors,
-            always_correct=self.config.always_correct_typing,
+        # Tier 4 — a stable per-instance behavioural fingerprint. Sampled from a
+        # dedicated rng so it never perturbs the action rng stream. With a seed
+        # the person is reproducible; with no seed each run is a different person.
+        self._profile_rng = random.Random(
+            None if self.config.seed is None else self.config.seed + 7919
         )
+        self.individual = profile
+        if self.individual is None and self.config.individuality:
+            self.individual = sample_individual(self._profile_rng)
+        self._tempo = ActionTempo()
+
+        # Human Interaction Layer engines (parameterised by the individual).
+        if self.individual is not None:
+            self._mouse = self.individual.build_mouse_engine()
+            self._typing = self.individual.build_typing_engine(
+                errors_enabled=self.config.typing_errors,
+                always_correct=self.config.always_correct_typing,
+            )
+            self._move_speed = self.individual.move_speed
+        else:
+            self._mouse = MouseTrajectoryEngine()
+            self._typing = HumanTypingEngine(
+                errors_enabled=self.config.typing_errors,
+                always_correct=self.config.always_correct_typing,
+            )
+            self._move_speed = 1.0
         self._timing = HumanTimingManager()
         self._session = SessionState()
         self._resolver = resolver  # default built lazily (cheap; finders load on use)
@@ -167,9 +189,14 @@ class Bot:
     # --- internals --------------------------------------------------------
     def _begin(self, action: str) -> None:
         self.guard.precheck(action)
+        self._tempo.advance(self._rng)  # AR(1): stay in fast/slow streaks
         state = _ACTION_STATES.get(action)
         if state is not None:
             self.behavior.observe(state)
+
+    def _pace(self) -> float:
+        """Combined timing multiplier: session warm-up/fatigue * AR(1) tempo."""
+        return self._session.pace_multiplier() * self._tempo.value
 
     def _end(self, action: str, **fields) -> None:
         self.audit.record(
@@ -209,7 +236,7 @@ class Bot:
             point,
             rng=self._rng,
             target_size=size,
-            speed_multiplier=self._persona.speed_multiplier,
+            speed_multiplier=self._persona.speed_multiplier * self._move_speed * self._tempo.value,
         )
         cur = start.as_int()
         for step in plan:
@@ -274,9 +301,11 @@ class Bot:
     # --- keyboard ---------------------------------------------------------
     def type(self, text: str) -> "Bot":
         self._begin("type")
-        base_wpm = max(20.0, self._persona.type_cps * 12)  # cps -> wpm (~5 chars/word)
-        fatigue = self._session.pace_multiplier()
-        for event in self._typing.plan(text, self._rng, base_wpm=base_wpm, session_fatigue=fatigue):
+        if self.individual is not None:
+            base_wpm = max(20.0, self.individual.base_wpm * (self._persona.type_cps / 6.0))
+        else:
+            base_wpm = max(20.0, self._persona.type_cps * 12)  # cps -> wpm (~5 chars/word)
+        for event in self._typing.plan(text, self._rng, base_wpm=base_wpm, session_fatigue=self._pace()):
             self.killswitch.check()
             self._sleep(event.delay)
             # Held modifiers (e.g. Shift for a capital) press first and overlap
@@ -338,7 +367,7 @@ class Bot:
             delay = self._timing.decision_delay(choices, self._rng)
         else:
             delay = self._timing.thinking_delay(complexity, self._rng)
-        delay = delay * self._session.pace_multiplier() + self._session.maybe_distraction(self._rng)
+        delay = delay * self._pace() + self._session.maybe_distraction(self._rng)
         self._sleep(delay)
         self._end("think", complexity=complexity, choices=choices, delay=round(delay, 4))
         return self
@@ -350,7 +379,7 @@ class Bot:
         """
         self._begin("read")
         delay = self._timing.reading_delay(content, self._rng, complexity, scan=scan)
-        delay = delay * self._session.pace_multiplier() + self._session.maybe_distraction(self._rng)
+        delay = delay * self._pace() + self._session.maybe_distraction(self._rng)
         self._sleep(delay)
         chars = content if isinstance(content, int) else len(str(content))
         self._end("read", chars=chars, delay=round(delay, 4))
