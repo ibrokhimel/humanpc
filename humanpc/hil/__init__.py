@@ -12,6 +12,7 @@ from .behavior import BehaviorState, BehaviorTracker
 from .idle import IdleDriftLoop, IdleMovementGenerator
 from .mouse import MouseStep, MouseTrajectoryEngine
 from .scroll import plan_scroll
+from .session import SessionState
 from .timing import HumanTimingManager
 from .typing import HumanTypingEngine, KeyEvent
 
@@ -21,6 +22,7 @@ __all__ = [
     "HumanTypingEngine",
     "KeyEvent",
     "HumanTimingManager",
+    "SessionState",
     "plan_scroll",
     "BehaviorState",
     "BehaviorTracker",
