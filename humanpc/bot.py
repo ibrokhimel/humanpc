@@ -24,6 +24,7 @@ from .hil import (
     HumanTimingManager,
     HumanTypingEngine,
     MouseTrajectoryEngine,
+    SessionState,
     plan_scroll,
 )
 from .hil.idle import IdleDriftLoop
@@ -93,6 +94,7 @@ class Bot:
             always_correct=self.config.always_correct_typing,
         )
         self._timing = HumanTimingManager()
+        self._session = SessionState()
         self._resolver = resolver  # default built lazily (cheap; finders load on use)
         self._windows = windows    # default built lazily (Win32 backend loads on use)
         self._clipboard = clipboard
@@ -174,6 +176,7 @@ class Bot:
             action, persona=self._persona.name, dry_run=self.dry_run, **fields
         )
         self._last_action = time.monotonic()
+        self._session.tick()
 
     def _sleep(self, seconds: float) -> None:
         if self.dry_run or seconds <= 0:
@@ -272,7 +275,8 @@ class Bot:
     def type(self, text: str) -> "Bot":
         self._begin("type")
         base_wpm = max(20.0, self._persona.type_cps * 12)  # cps -> wpm (~5 chars/word)
-        for event in self._typing.plan(text, self._rng, base_wpm=base_wpm):
+        fatigue = self._session.pace_multiplier()
+        for event in self._typing.plan(text, self._rng, base_wpm=base_wpm, session_fatigue=fatigue):
             self.killswitch.check()
             self._sleep(event.delay)
             # Held modifiers (e.g. Shift for a capital) press first and overlap
@@ -323,19 +327,33 @@ class Bot:
         return self
 
     # --- deliberation -----------------------------------------------------
-    def think(self, complexity: str = "medium") -> "Bot":
-        """Pause as if deciding. complexity: low | medium | high | very_high."""
+    def think(self, complexity: str = "medium", *, choices: int | None = None) -> "Bot":
+        """Pause as if deciding. complexity: low | medium | high | very_high.
+
+        Pass ``choices`` (number of on-screen options) to use Hick-Hyman decision
+        timing instead of the coarse complexity bucket.
+        """
         self._begin("think")
-        self._sleep(self._timing.thinking_delay(complexity, self._rng))
-        self._end("think", complexity=complexity)
+        if choices is not None:
+            delay = self._timing.decision_delay(choices, self._rng)
+        else:
+            delay = self._timing.thinking_delay(complexity, self._rng)
+        delay = delay * self._session.pace_multiplier() + self._session.maybe_distraction(self._rng)
+        self._sleep(delay)
+        self._end("think", complexity=complexity, choices=choices, delay=round(delay, 4))
         return self
 
-    def read(self, content, *, complexity: float = 1.0) -> "Bot":
-        """Pause as if reading. ``content`` may be text or a character count."""
+    def read(self, content, *, complexity: float = 1.0, scan: bool = False) -> "Bot":
+        """Pause as if reading (``scan=True`` for skimming a familiar UI).
+
+        ``content`` may be text or a character count.
+        """
         self._begin("read")
-        self._sleep(self._timing.reading_delay(content, self._rng, complexity))
+        delay = self._timing.reading_delay(content, self._rng, complexity, scan=scan)
+        delay = delay * self._session.pace_multiplier() + self._session.maybe_distraction(self._rng)
+        self._sleep(delay)
         chars = content if isinstance(content, int) else len(str(content))
-        self._end("read", chars=chars)
+        self._end("read", chars=chars, delay=round(delay, 4))
         return self
 
     # --- finding ----------------------------------------------------------
