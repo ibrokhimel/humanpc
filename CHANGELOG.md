@@ -5,6 +5,24 @@ was committed directly to `main` (see [`docs/BUILD_PHASES.md`](docs/BUILD_PHASES
 
 ## [Unreleased]
 
+### Movement trainer (`humanpc/learn`)
+- **`humanpc trainer`** — fullscreen tkinter app with 9 randomized task types
+  (point, double, right, drag, scroll, scroll_click, trace, read, chain) that
+  records raw hardware mouse input via `WH_MOUSE_LL`; injected events are dropped.
+  Pauses (and saves) automatically when the window loses focus; saves on crash.
+- **Compact storage** — delta-encoded, narrowest-int `.npz` sessions + JSON task
+  sidecars (~2–3 MB/hour at 1000 Hz). Sessions record screen, DPI mode, person,
+  and Windows pointer speed / "Enhance pointer precision".
+- **`humanpc trainer-stats`** — readable report with per-category coverage, a
+  heuristic humanness estimate (ceiling ~80%), projections, and a per-person table.
+- **Multi-person** — `--person` subfolders; `trainer-export` / `trainer-import`
+  move data between machines as a validated zip (member whitelist, size caps,
+  corrupt-data checks, duplicate skipping).
+- **`HumanpcTrainer.exe`** — `scripts/build_trainer_exe.py` builds a one-file
+  PyInstaller trainer for PCs without Python; it keeps
+  `Desktop/mousedata_<name>.zip` current in the background after every save.
+- New `learn` extra (`numpy`).
+
 ### Provenance & timing (Tier 0 — see [`GAP_ANALYSIS.md`](GAP_ANALYSIS.md))
 - **Keystroke dwell:** typed characters now go through `char_down → hold → char_up`
   with a realistic, right-skewed key-hold time (`hil/typing/DwellModel`) instead of

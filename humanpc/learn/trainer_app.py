@@ -15,7 +15,7 @@ from .. import __version__
 from .dataset import SessionWriter, load_weights, stats, task_units
 from .report import estimate
 from .events import BTN_LEFT, BTN_MIDDLE, BTN_RIGHT
-from .recorder import Recorder
+from .recorder import Recorder, mouse_settings
 from .task_runtime import C_MUTED, C_TEXT, NS, make_runtime
 from .tasks import TaskSampler
 
@@ -27,7 +27,8 @@ TICK_MS = 5
 
 class TrainerApp:
     def __init__(self, data_dir: Path, *, minutes: float = 10.0, seed: int | None = None,
-                 keep_injected: bool = False):
+                 keep_injected: bool = False, person: str | None = None, dpi_mode: str | None = None,
+                 on_saved=None):
         self.data_dir = Path(data_dir)
         self.break_after = minutes * 60
         self.rng = random.Random(seed)
@@ -44,14 +45,17 @@ class TrainerApp:
         self._last_tick = time.perf_counter()
         self._gap_until = 0
         self._since_break = 0.0
-        self.dpi_mode = "unknown"
+        self.person = person
+        self.dpi_mode = dpi_mode  # pass it when the caller already set DPI awareness
+        self.on_saved = on_saved  # called after every save (e.g. refresh an export zip)
 
     # -- lifecycle ---------------------------------------------------------------
     def run(self) -> dict:
         import tkinter as tk
 
         from ..perception.dpi import set_dpi_awareness
-        self.dpi_mode = set_dpi_awareness()
+        if self.dpi_mode is None:
+            self.dpi_mode = set_dpi_awareness()
         self.recorder.start()
         self.root = tk.Tk()
         self.root.title("humanpc trainer")
@@ -72,18 +76,23 @@ class TrainerApp:
         c.bind("<MouseWheel>", self._wheel)
         self.root.bind("<Key>", self._key)
         self.root.protocol("WM_DELETE_WINDOW", self._quit)
+        self.root.bind("<FocusOut>", self._focus_out)
         self.root.focus_force()
         self._render()
         self.root.after(TICK_MS, self._tick)
         try:
             self.root.mainloop()
+        except BaseException:
+            self._save_quietly()  # crash / Ctrl+C: keep what was recorded
+            raise
         finally:
             self.recorder.stop()
         return {"session": str(self.writer.npz_path), "tasks": len(self.records),
                 "events": len(self.recorder.events), "active_seconds": round(self.active, 1)}
 
     def _meta(self) -> dict:
-        return {"version": 1, "humanpc": __version__, "session": self.name,
+        return {"version": 1, "humanpc": __version__, "session": self.name, "person": self.person,
+                "mouse": mouse_settings(),
                 "started": self.name[8:], "screen": list(self.size), "window_origin": list(self.origin),
                 "dpi_mode": self.dpi_mode, "seed": self.seed, "hook": "WH_MOUSE_LL",
                 "coords": "tasks in window px; events in screen px", "scroll_step_px": 100,
@@ -92,6 +101,20 @@ class TrainerApp:
 
     def _save(self) -> None:
         self.writer.save(self.recorder.snapshot(), self.records, self._meta())
+        if self.on_saved is not None:
+            self.on_saved()
+
+    def _save_quietly(self) -> None:
+        try:
+            if self.recorder.events or self.records:
+                self._save()
+        except Exception:  # noqa: BLE001 - never mask the original error
+            pass
+
+    def _focus_out(self, e) -> None:
+        # Alt+Tab / clicking another window: pause (which saves) and stop recording.
+        if e.widget is self.root and self.state in ("running", "gap"):
+            self._pause("Paused because you left the window - your data is saved.")
 
     def _quit(self) -> None:
         if self.rt is not None and not self.rt.done:
@@ -255,5 +278,7 @@ class TrainerApp:
 
 
 def run_trainer(data_dir: Path, *, minutes: float = 10.0, seed: int | None = None,
-                keep_injected: bool = False) -> dict:
-    return TrainerApp(data_dir, minutes=minutes, seed=seed, keep_injected=keep_injected).run()
+                keep_injected: bool = False, person: str | None = None,
+                dpi_mode: str | None = None, on_saved=None) -> dict:
+    return TrainerApp(data_dir, minutes=minutes, seed=seed, keep_injected=keep_injected,
+                      person=person, dpi_mode=dpi_mode, on_saved=on_saved).run()

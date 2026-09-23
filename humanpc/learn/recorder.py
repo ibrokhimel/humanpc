@@ -42,6 +42,19 @@ class MSLLHOOKSTRUCT(ctypes.Structure):
     ]
 
 
+def mouse_settings() -> dict:
+    """Windows pointer speed (1-20, default 10) + acceleration ("Enhance pointer precision")."""
+    if sys.platform != "win32":
+        return {}
+    spi = ctypes.windll.user32.SystemParametersInfoW
+    speed = ctypes.c_int(0)
+    accel = (ctypes.c_int * 3)()
+    ok_speed = spi(0x0070, 0, ctypes.byref(speed), 0)  # SPI_GETMOUSESPEED
+    ok_accel = spi(0x0003, 0, accel, 0)  # SPI_GETMOUSE
+    return {"pointer_speed": speed.value if ok_speed else None,
+            "enhance_precision": bool(accel[2]) if ok_accel else None}
+
+
 class Recorder:
     """Records global mouse events between ``start()`` and ``stop()``."""
 

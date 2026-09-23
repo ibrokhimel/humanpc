@@ -67,7 +67,18 @@ def build_parser() -> argparse.ArgumentParser:
     tr.add_argument("--data-dir", help="where sessions are stored (default ~/.humanpc/training)")
     tr.add_argument("--minutes", type=float, default=10.0, help="suggest a break after N minutes")
     tr.add_argument("--keep-injected", action="store_true", help="also record software-injected input")
-    add("trainer-stats").add_argument("--data-dir")
+    tr.add_argument("--person", help="record into a per-person subfolder")
+    ts = add("trainer-stats")
+    ts.add_argument("--data-dir")
+    ts.add_argument("--person", help="only this person (default: everyone)")
+    te = add("trainer-export")
+    te.add_argument("output", help="zip file to write")
+    te.add_argument("--data-dir")
+    te.add_argument("--person")
+    ti = add("trainer-import")
+    ti.add_argument("zip", nargs="+", help="zip file(s) exported by the trainer")
+    ti.add_argument("--data-dir")
+    ti.add_argument("--person", help="override the name stored in the zip")
     return p
 
 
@@ -119,6 +130,38 @@ def _emit(args, result) -> None:
         print(json.dumps(result, indent=2))
 
 
+def _trainer_cmd(args) -> int:
+    from .learn.dataset import default_data_dir, person_dir
+    root = args.data_dir or default_data_dir()
+    try:
+        if args.cmd == "trainer":
+            from .learn.trainer_app import run_trainer
+            _emit(args, run_trainer(person_dir(root, args.person), minutes=args.minutes, seed=args.seed,
+                                    keep_injected=args.keep_injected, person=args.person))
+        elif args.cmd == "trainer-stats":
+            from .learn.report import format_people, format_report, polling_hz_of_latest, summary
+            from .learn.dataset import people, stats
+            data_dir = person_dir(root, args.person)
+            everyone = not args.person
+            st = stats(data_dir, recursive=everyone)
+            if args.json:
+                _emit(args, {**st, "estimate": summary(st)})
+            else:
+                print(format_report(st, polling_hz=polling_hz_of_latest(data_dir)))
+                if everyone and people(root):
+                    print(format_people(root))
+        elif args.cmd == "trainer-export":
+            from .learn.transfer import export_zip
+            _emit(args, export_zip(person_dir(root, args.person), args.person or "me", args.output))
+        elif args.cmd == "trainer-import":
+            from .learn.transfer import import_zip
+            _emit(args, [import_zip(z, root, person=args.person) for z in args.zip])
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -129,21 +172,8 @@ def main(argv=None) -> int:
         _emit(args, {"steps": results})
         return 0
 
-    if args.cmd in ("trainer", "trainer-stats"):
-        from .learn.dataset import default_data_dir, stats
-        data_dir = args.data_dir or default_data_dir()
-        if args.cmd == "trainer":
-            from .learn.trainer_app import run_trainer
-            _emit(args, run_trainer(data_dir, minutes=args.minutes, seed=args.seed,
-                                    keep_injected=args.keep_injected))
-        else:
-            from .learn.report import format_report, polling_hz_of_latest, summary
-            st = stats(data_dir)
-            if args.json:
-                _emit(args, {**st, "estimate": summary(st)})
-            else:
-                print(format_report(st, polling_hz=polling_hz_of_latest(data_dir)))
-        return 0
+    if args.cmd.startswith("trainer"):
+        return _trainer_cmd(args)
 
     if args.cmd == "serve":
         if args.mcp:

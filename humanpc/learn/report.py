@@ -203,3 +203,24 @@ def polling_hz_of_latest(data_dir) -> float | None:
         return float(1e6 / np.median(dt)) if dt.size > 50 else None
     except Exception:  # noqa: BLE001 - the report must never fail on this
         return None
+
+
+def format_people(root) -> str:
+    """One line per person (subfolder) plus your own root-level sessions."""
+    from .dataset import people, stats
+
+    _, _, rule_ch, _ = _glyphs()
+    rows = []
+    own = stats(root)
+    if own["sessions"]:
+        rows.append(("(you)", own))
+    rows += [(name, stats(folder)) for name, folder in people(root).items()]
+    lines = ["  People", "  " + rule_ch * 62,
+             f"    {'name':<18}{'recorded':>14}{'tasks':>8}   estimate (alone)"]
+    for name, st in rows:
+        pct = estimate(st.get("units", {}))
+        lines.append(f"    {name[:18]:<18}{_duration(st['active_seconds']):>14}{st['tasks_ok']:>8}"
+                     f"   {_bar(pct / 100, 12)} {pct:3.0f}%")
+    lines += ["", "  The combined estimate above assumes one model trained on everyone with a",
+              "  per-person style code; each person's own line is what their data gives alone.", ""]
+    return "\n".join(lines)

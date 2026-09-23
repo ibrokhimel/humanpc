@@ -206,3 +206,104 @@ def test_task_units_counts_by_category():
     assert task_units({"kind": "double", "params": {}, "result": "ok"}) == {"aim": 1, "click": 1}
     assert task_units({"kind": "point", "params": {}, "result": "skipped"}) == {}
     assert task_units({"kind": "read", "params": {}, "result": "ok", "t_shown_us": 0, "t_end_us": 8_000_000}) == {"idle": 8.0}
+
+
+def _session(folder, name="session_20260101_000000", n=100):
+    SessionWriter(folder, name).save(_raw(n), [{"kind": "point", "params": {}, "result": "ok"}],
+                                     {"events": n, "active_seconds": 60.0})
+
+
+def test_export_import_roundtrip_skips_duplicates(tmp_path):
+    import zipfile
+
+    from humanpc.learn.transfer import export_zip, import_zip
+    src = tmp_path / "other_pc"
+    _session(src)
+    _session(src, "session_20260101_010000")
+    info = export_zip(src, "Alice Smith", tmp_path / "out.zip")
+    assert info["sessions"] == 2 and info["person"] == "Alice_Smith"
+    with zipfile.ZipFile(tmp_path / "out.zip") as z:
+        assert z.getinfo("session_20260101_000000.npz").compress_type == zipfile.ZIP_STORED
+
+    root = tmp_path / "training"
+    r1 = import_zip(tmp_path / "out.zip", root)
+    assert r1["added"] == 2 and r1["person"] == "Alice_Smith"
+    assert import_zip(tmp_path / "out.zip", root)["skipped"] == 2
+    ev, _, _ = load_session(root / "Alice_Smith" / "session_20260101_000000")
+    assert len(ev["x"]) == 100
+    assert stats(root, recursive=True)["sessions"] == 2 and stats(root)["sessions"] == 0
+
+
+@pytest.mark.parametrize("member", ["../evil.npz", "session_20260101_000000.exe", "sub/session_20260101_000000.json"])
+def test_import_rejects_unexpected_members(tmp_path, member):
+    import json
+    import zipfile
+
+    from humanpc.learn.transfer import FORMAT, import_zip
+    zp = tmp_path / "bad.zip"
+    with zipfile.ZipFile(zp, "w") as z:
+        z.writestr("manifest.json", json.dumps({"format": FORMAT, "person": "x"}))
+        z.writestr(member, b"x")
+    with pytest.raises(ValueError):
+        import_zip(zp, tmp_path / "root")
+    assert not (tmp_path / "root").exists() and not (tmp_path / "evil.npz").exists()
+
+
+def test_import_rejects_corrupt_and_foreign_zips(tmp_path):
+    import json
+    import zipfile
+
+    from humanpc.learn.transfer import FORMAT, import_zip
+    zp = tmp_path / "corrupt.zip"
+    with zipfile.ZipFile(zp, "w") as z:
+        z.writestr("manifest.json", json.dumps({"format": FORMAT, "person": "x"}))
+        z.writestr("session_20260101_000000.npz", b"not numpy")
+        z.writestr("session_20260101_000000.json", b"{}")
+    with pytest.raises(ValueError, match="corrupt"):
+        import_zip(zp, tmp_path / "root")
+    other = tmp_path / "other.zip"
+    with zipfile.ZipFile(other, "w") as z:
+        z.writestr("readme.txt", "hi")
+    with pytest.raises(ValueError, match="manifest"):
+        import_zip(other, tmp_path / "root")
+
+
+def test_background_exporter_tracks_latest_data(tmp_path):
+    import zipfile
+
+    from humanpc.learn.transfer import BackgroundExporter
+    src, out = tmp_path / "data", tmp_path / "desk" / "mousedata_bob.zip"
+    _session(src)
+    ex = BackgroundExporter(src, "bob", out)
+    for _ in range(5):  # bursts collapse; the final zip still has everything
+        ex.request()
+    _session(src, "session_20260101_020000")
+    ex.request()
+    assert ex.flush(10)["sessions"] == 2
+    with zipfile.ZipFile(out) as z:
+        assert "session_20260101_020000.json" in z.namelist()
+    assert not list(out.parent.glob("*.tmp"))
+
+
+def test_person_names_and_people(tmp_path):
+    from humanpc.learn.dataset import clean_person, people, person_dir
+    assert clean_person("  Jöhn Doe!! ") == "J_hn_Doe"
+    with pytest.raises(ValueError):
+        clean_person("..//")
+    assert person_dir(tmp_path, None) == tmp_path
+    _session(person_dir(tmp_path, "amy"))
+    (tmp_path / "empty").mkdir()
+    assert list(people(tmp_path)) == ["amy"]
+
+
+def test_cli_export_import_and_stats(tmp_path, capsys):
+    from humanpc.cli import main
+    _session(tmp_path / "pc2" / "dan")
+    assert main(["trainer-export", str(tmp_path / "a.zip"), "--data-dir", str(tmp_path / "pc2"),
+                 "--person", "dan"]) == 0
+    assert main(["trainer-import", str(tmp_path / "a.zip"), "--data-dir", str(tmp_path / "home")]) == 0
+    capsys.readouterr()
+    assert main(["trainer-stats", "--data-dir", str(tmp_path / "home")]) == 0
+    out = capsys.readouterr().out
+    assert "Estimated humanness" in out and "dan" in out
+    assert main(["trainer-import", str(tmp_path / "missing.zip"), "--data-dir", str(tmp_path)]) == 1
