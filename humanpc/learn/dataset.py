@@ -1,16 +1,19 @@
 """Session storage: one compressed ``.npz`` of events + one ``.json`` sidecar.
 
-Layout under the data dir::
+Layout under the data dir (the root holds your own sessions; each other
+person gets a subfolder, see ``person_dir``)::
 
     session_20260924_153012.npz   # delta-encoded event columns (see events.py)
     session_20260924_153012.json  # {"meta": {...}, "tasks": [...]}
     task_weights.json             # optional: per-kind sampling weights override
+    alice/session_....npz         # another person's sessions
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 from .events import decode, encode
@@ -21,6 +24,26 @@ WEIGHTS_FILE = "task_weights.json"
 def default_data_dir() -> Path:
     env = os.environ.get("HUMANPC_TRAINING_DIR")
     return Path(env) if env else Path.home() / ".humanpc" / "training"
+
+
+def clean_person(name: str) -> str:
+    """Folder-safe person name (letters, digits, - and _), or ValueError."""
+    cleaned = re.sub(r"[^A-Za-z0-9_-]+", "_", (name or "").strip()).strip("_")[:40]
+    if not cleaned:
+        raise ValueError(f"invalid person name: {name!r}")
+    return cleaned
+
+
+def person_dir(root: Path, person: str | None) -> Path:
+    return Path(root) / clean_person(person) if person else Path(root)
+
+
+def people(root: Path) -> dict[str, Path]:
+    """Person name -> folder, for every subfolder of ``root`` holding sessions."""
+    root = Path(root)
+    if not root.is_dir():
+        return {}
+    return {d.name: d for d in sorted(root.iterdir()) if d.is_dir() and list_sessions(d)}
 
 
 class SessionWriter:
@@ -50,12 +73,12 @@ class SessionWriter:
         os.replace(tmp_json, self.json_path)
 
 
-def list_sessions(data_dir: Path) -> list[Path]:
+def list_sessions(data_dir: Path, *, recursive: bool = False) -> list[Path]:
     d = Path(data_dir)
     if not d.is_dir():
         return []
-    return sorted(p.with_suffix("") for p in d.glob("session_*.json")
-                  if p.with_suffix(".npz").exists())
+    found = d.rglob("session_*.json") if recursive else d.glob("session_*.json")
+    return sorted(p.with_suffix("") for p in found if p.with_suffix(".npz").exists())
 
 
 def load_session(base: Path) -> tuple[dict, dict, list[dict]]:
@@ -104,11 +127,11 @@ def task_units(task: dict) -> dict:
     return {}
 
 
-def stats(data_dir: Path) -> dict:
+def stats(data_dir: Path, *, recursive: bool = False) -> dict:
     """Totals across all sessions, read from sidecars only (cheap)."""
     out = {"data_dir": str(data_dir), "sessions": 0, "tasks": 0, "tasks_ok": 0, "events": 0,
            "active_seconds": 0.0, "bytes": 0, "by_kind": {}, "units": {}}
-    for base in list_sessions(data_dir):
+    for base in list_sessions(data_dir, recursive=recursive):
         try:
             side = json.loads(base.with_suffix(".json").read_text(encoding="utf-8"))
         except (OSError, ValueError):

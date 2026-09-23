@@ -18,6 +18,8 @@ automated action behaves like a person rather than a script.
 - **Human by default** — natural mouse curves, variable typing speed, pauses, and timing.
 - **Three ways to call it** — Python library, CLI, and HTTP / MCP tool server (agent-callable).
 - **Do anything on a PC** — input, screenshots/OCR, window & app management, clipboard, shell.
+- **Learn from real people** — a movement trainer records genuine human mouse data (yours or
+  anyone's, via a standalone `.exe`) for training learned movement models.
 
 ## Install
 
@@ -25,6 +27,7 @@ automated action behaves like a person rather than a script.
 pip install -e .            # core (zero dependencies; dry-run + tests work as-is)
 pip install -e .[all]       # real input, capture, OCR, UIA, windows
 pip install -e .[server]    # FastAPI HTTP + MCP tool server
+pip install -e .[learn]     # movement trainer storage (numpy)
 ```
 
 ## Usage
@@ -69,11 +72,46 @@ steps:
 A global kill-switch (`Ctrl+Alt+Q`, or throw the cursor into a screen corner)
 aborts any run.
 
+## Movement trainer
+
+Record **real** human mouse movement to train a model that moves like a person.
+A fullscreen app prompts tasks — point-to-point clicks, double/right clicks,
+drags, scrolling, path tracing, reading (idle drift), click chains — while a
+low-level hook records the raw 1000 Hz hardware stream (software-injected
+input is dropped). About 2–3 MB per hour.
+
+```bash
+humanpc trainer                     # Space start · Esc pause · S skip · Q save & quit
+humanpc trainer --person alice      # record someone else on this PC
+humanpc trainer-stats               # readable report + rough humanness estimate
+```
+
+**Collecting from other PCs** — no Python needed there:
+
+```bash
+python scripts/build_trainer_exe.py          # -> dist/HumanpcTrainer.exe (~24 MB)
+```
+
+They double-click the exe, enter a name, and do the tasks. `Desktop\mousedata_<name>.zip`
+is refreshed in the background on every save (every 15 tasks, pause, leaving the
+window, quit, even a crash) and always holds all of their sessions. Back here:
+
+```bash
+humanpc trainer-import mousedata_alice.zip   # validated; duplicates skipped
+humanpc trainer-export out.zip --person bob  # the reverse
+```
+
+Only record people who know what is collected and why. The estimate in
+`trainer-stats` is a heuristic, not a measurement — see
+[`docs/TRAINER.md`](docs/TRAINER.md) for the data format, the estimate, and
+multi-person training notes.
+
 ## Design docs
 
 - [`docs/BUILD_PHASES.md`](docs/BUILD_PHASES.md) — live build tracker (what's done / in progress).
 - [`docs/PLAN.md`](docs/PLAN.md) — implementation plan, architecture, file layout, roadmap.
 - [`docs/blueprint/`](docs/blueprint/) — the Human Interaction Layer research blueprint + diagrams.
+- [`docs/TRAINER.md`](docs/TRAINER.md) — movement trainer: tasks, data format, humanness estimate.
 
 ## Planned layout
 
@@ -88,6 +126,7 @@ humanpc/
 ├── hil/              # Human Interaction Layer (mouse/typing/scroll/timing/behavior)
 ├── flows/            # YAML flow runner, record/replay
 ├── safety/           # kill-switch, dry-run, rate limit, audit log
+├── learn/            # movement trainer: recorder, tasks, dataset, export/import
 ├── cli.py            # CLI
 └── server/           # HTTP + MCP tool server
 ```
