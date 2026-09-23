@@ -63,6 +63,11 @@ def build_parser() -> argparse.ArgumentParser:
     srv.add_argument("--mcp", action="store_true", help="run the MCP tool server (stdio)")
     srv.add_argument("--host", default="127.0.0.1")
     srv.add_argument("--port", type=int, default=8000)
+    tr = add("trainer")
+    tr.add_argument("--data-dir", help="where sessions are stored (default ~/.humanpc/training)")
+    tr.add_argument("--minutes", type=float, default=10.0, help="suggest a break after N minutes")
+    tr.add_argument("--keep-injected", action="store_true", help="also record software-injected input")
+    add("trainer-stats").add_argument("--data-dir")
     return p
 
 
@@ -122,6 +127,22 @@ def main(argv=None) -> int:
         bot = _make_bot(args)
         results = FlowRunner().run_file(args.file, bot=bot)
         _emit(args, {"steps": results})
+        return 0
+
+    if args.cmd in ("trainer", "trainer-stats"):
+        from .learn.dataset import default_data_dir, stats
+        data_dir = args.data_dir or default_data_dir()
+        if args.cmd == "trainer":
+            from .learn.trainer_app import run_trainer
+            _emit(args, run_trainer(data_dir, minutes=args.minutes, seed=args.seed,
+                                    keep_injected=args.keep_injected))
+        else:
+            from .learn.report import format_report, polling_hz_of_latest, summary
+            st = stats(data_dir)
+            if args.json:
+                _emit(args, {**st, "estimate": summary(st)})
+            else:
+                print(format_report(st, polling_hz=polling_hz_of_latest(data_dir)))
         return 0
 
     if args.cmd == "serve":
