@@ -42,7 +42,7 @@ was committed directly to `main` (see [`docs/BUILD_PHASES.md`](docs/BUILD_PHASES
   (epochs were ~30x slower on larger datasets from WDDM memory spill).
 - Fix: session decoding accepts a scalar `x0`/`y0` as written by other tools.
 
-### Provenance & timing (Tier 0 — see [`GAP_ANALYSIS.md`](GAP_ANALYSIS.md))
+### Provenance & timing (Tier 0)
 - **Keystroke dwell:** typed characters now go through `char_down → hold → char_up`
   with a realistic, right-skewed key-hold time (`hil/typing/DwellModel`) instead of
   an atomic zero-dwell emit. `InputDriver` gains `char_down`/`char_up` (default
