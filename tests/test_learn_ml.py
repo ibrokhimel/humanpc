@@ -209,3 +209,31 @@ def test_land_on_target_pulls_endpoint_inside_radius():
     assert math.hypot(out["dx"].sum() - 300, out["dy"].sum()) <= 8.01
     assert np.allclose(out["dx"][:10], 12.0)  # early motion untouched
 
+
+def test_train_reports_every_epoch_and_saves_before_best_callback(tmp_path, monkeypatch):
+    from humanpc.learn.ml import train as train_mod
+
+    segs = extract(*_session(n_tasks=12))
+    monkeypatch.setattr(train_mod, "load_all", lambda *a, **k: segs)
+    seen = []
+
+    def on_epoch(rec, best):
+        seen.append((rec["epoch"], best, (tmp_path / "model.pt").exists()))
+
+    summary = train_mod.train(tmp_path, tmp_path, epochs=2, size="small", cpu=True, log=lambda *_: None,
+                              on_epoch=on_epoch)
+    assert [s[0] for s in seen] == [1, 2]
+    assert seen[0][1] and seen[0][2]  # first epoch is always a best, and model.pt is already written
+    assert summary["epochs_run"] == 2
+
+
+def test_watch_exam_is_fixed_and_inside_the_window():
+    from humanpc.learn.ml.watch import H, W, exam
+
+    a, b = exam(), exam()
+    assert [(s.kind, s.target, st) for s, st in a] == [(s.kind, s.target, st) for s, st in b]
+    assert {s.kind for s, _ in a} == {"aim", "aim_double", "aim_right", "drag"}
+    for seg, start in a:
+        for x, y in (seg.target, start):
+            assert 0 < x < W and 0 < y < H
+

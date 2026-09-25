@@ -112,11 +112,13 @@ def run_epoch(model, cached: list[dict], opt, sched, *, device, train: bool, amp
 
 def train(data_dir: Path, out_dir: Path | None = None, *, epochs: int = 1000, size: str = "auto",
           token_budget: int = 32_768, lr: float = 3e-4, patience: int = 15, plateau: int = 5, seed: int = 0,
-          cpu: bool = False, mirror: bool = True, max_sessions: int | None = None, log=print) -> dict:
+          cpu: bool = False, mirror: bool = True, max_sessions: int | None = None, log=print,
+          on_epoch=None) -> dict:
     """Train until validation stops improving (``epochs`` is only an upper bound).
 
     The learning rate warms up, then halves whenever validation hasn't improved for
     ``plateau`` epochs; training stops after ``patience`` epochs without a new best.
+    ``on_epoch(record, is_best)`` is called after every epoch (``model.pt`` is already saved on a best).
     """
     random.seed(seed)
     np.random.seed(seed)
@@ -166,6 +168,8 @@ def train(data_dir: Path, out_dir: Path | None = None, *, epochs: int = 1000, si
         log(f"epoch {ep:3d}  train {trl['total']:.4f}  val {val['total']:.4f}  "
             f"(move {val['moved']:.3f} path {val['mdn']:.3f} click {val['click']:.3f} "
             f"wheel {val['wheel']:.3f} end {val['end']:.3f})  {time.time() - t0:.1f}s{mark}")
+        if on_epoch:
+            on_epoch(history[-1], bool(mark))
         if ep - best_epoch >= patience:
             log(f"no improvement for {patience} epochs - stopping early")
             break
