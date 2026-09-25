@@ -10,7 +10,6 @@ Checkpoints go to ``<data-dir>/model/``: ``model.pt`` (best validation loss),
 from __future__ import annotations
 
 import json
-import math
 import random
 import time
 import zlib
@@ -24,6 +23,7 @@ from .segments import Segment, load_all
 
 ARRAY_KEYS = ("inputs", "dxdy", "moved", "click", "wheel", "end")
 PAD_TO = 64  # round batch lengths up: few distinct shapes keep the CUDA allocator from fragmenting
+GPU_CACHE_STEPS = 4_000_000  # up to this many steps (~0.7 GB) the whole dataset lives on the GPU
 
 
 def is_val(seg: Segment, frac: int = 10) -> bool:
@@ -84,10 +84,14 @@ def batches(segs: list[Segment], people: list[str], token_budget: int, *, shuffl
         yield b
 
 
-def run_epoch(model, segs, people, opt, sched, *, token_budget, device, train: bool, amp_dtype):
+def run_epoch(model, cached: list[dict], opt, sched, *, device, train: bool, amp_dtype):
+    """One pass over batches already on ``device`` (built once; only their order changes)."""
     model.train(train)
     totals, count = {}, 0
-    for b in batches(segs, people, token_budget, shuffle=train, device=device):
+    if train:
+        random.shuffle(cached)
+    for b in cached:
+        b = {k: v.to(device, non_blocking=True) for k, v in b.items()}  # no-op when already there
         with torch.set_grad_enabled(train), torch.autocast(device.type, dtype=amp_dtype,
                                                            enabled=device.type == "cuda"):
             out = model(b["inputs"], b["cond"], b["person"])
@@ -97,7 +101,8 @@ def run_epoch(model, segs, people, opt, sched, *, token_budget, device, train: b
             ls["total"].backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
-            sched.step()
+            if sched:
+                sched.step()
         w = float(b["mask"].sum())
         for k, v in ls.items():
             totals[k] = totals.get(k, 0.0) + float(v.detach()) * w
@@ -105,9 +110,14 @@ def run_epoch(model, segs, people, opt, sched, *, token_budget, device, train: b
     return {k: v / max(count, 1) for k, v in totals.items()}
 
 
-def train(data_dir: Path, out_dir: Path | None = None, *, epochs: int = 60, size: str = "auto",
-          token_budget: int = 32_768, lr: float = 3e-4, patience: int = 10, seed: int = 0,
+def train(data_dir: Path, out_dir: Path | None = None, *, epochs: int = 1000, size: str = "auto",
+          token_budget: int = 32_768, lr: float = 3e-4, patience: int = 15, plateau: int = 5, seed: int = 0,
           cpu: bool = False, mirror: bool = True, max_sessions: int | None = None, log=print) -> dict:
+    """Train until validation stops improving (``epochs`` is only an upper bound).
+
+    The learning rate warms up, then halves whenever validation hasn't improved for
+    ``plateau`` epochs; training stops after ``patience`` epochs without a new best.
+    """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -134,22 +144,21 @@ def train(data_dir: Path, out_dir: Path | None = None, *, epochs: int = 60, size
 
     amp_dtype = torch.bfloat16 if device.type == "cuda" and torch.cuda.is_bf16_supported() else torch.float16
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.05, betas=(0.9, 0.95))
-    steps_per_epoch = sum(1 for _ in batches(tr, people, token_budget, shuffle=False, device="cpu"))
-    total = max(1, epochs * steps_per_epoch)
-    warm = min(200, total // 10 + 1)
-    sched = torch.optim.lr_scheduler.LambdaLR(
-        opt, lambda s: min(1.0, (s + 1) / warm) * 0.5 * (1 + math.cos(math.pi * min(1.0, s / total))))
+    home = device if total_steps <= GPU_CACHE_STEPS else torch.device("cpu")
+    tr_b = list(batches(tr, people, token_budget, shuffle=False, device=home))
+    va_b = list(batches(va, people, token_budget, shuffle=False, device=home))
+    warm = min(200, 5 * len(tr_b) + 1)
+    sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / warm))
 
     best, best_epoch, history = float("inf"), -1, []
     t_start = time.time()
     for ep in range(1, epochs + 1):
         t0 = time.time()
-        trl = run_epoch(model, tr, people, opt, sched, token_budget=token_budget, device=device,
-                        train=True, amp_dtype=amp_dtype)
+        trl = run_epoch(model, tr_b, opt, sched, device=device, train=True, amp_dtype=amp_dtype)
         with torch.no_grad():
-            val = run_epoch(model, va, people, opt, sched, token_budget=token_budget, device=device,
-                            train=False, amp_dtype=amp_dtype)
-        history.append({"epoch": ep, "train": trl, "val": val, "seconds": round(time.time() - t0, 2)})
+            val = run_epoch(model, va_b, opt, None, device=device, train=False, amp_dtype=amp_dtype)
+        history.append({"epoch": ep, "train": trl, "val": val, "seconds": round(time.time() - t0, 2),
+                        "lr": opt.param_groups[0]["lr"]})
         mark = ""
         if val["total"] < best:
             best, best_epoch, mark = val["total"], ep, "  *best"
@@ -160,6 +169,11 @@ def train(data_dir: Path, out_dir: Path | None = None, *, epochs: int = 60, size
         if ep - best_epoch >= patience:
             log(f"no improvement for {patience} epochs - stopping early")
             break
+        if not mark and (ep - best_epoch) % plateau == 0:
+            sched.base_lrs = [b / 2 for b in sched.base_lrs]  # stuck: take smaller steps
+            for g, b in zip(opt.param_groups, sched.base_lrs):
+                g["lr"] = b * min(1.0, (sched.last_epoch + 1) / warm)
+            log(f"no improvement for {plateau} epochs - learning rate halved to {sched.base_lrs[0]:.1e}")
     summary = {"best_val_loss": best, "best_epoch": best_epoch, "epochs_run": len(history),
                "size": size, "params": n_params, "train_movements": len(tr), "val_movements": len(va),
                "train_steps": total_steps, "people": people, "device": str(device),

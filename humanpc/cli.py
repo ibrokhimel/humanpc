@@ -82,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     tm = add("train-model")
     tm.add_argument("--data-dir")
     tm.add_argument("--out", help="model folder (default <data-dir>/model)")
-    tm.add_argument("--epochs", type=int, default=60)
+    tm.add_argument("--epochs", type=int, default=1000, help="upper limit; stops by itself once it stops improving")
     tm.add_argument("--size", default="auto", choices=["auto", "small", "base", "large"])
     tm.add_argument("--batch-tokens", type=int, default=32768, help="steps per batch (lower = less GPU memory)")
     tm.add_argument("--cpu", action="store_true")
