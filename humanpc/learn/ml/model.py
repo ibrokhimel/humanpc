@@ -22,7 +22,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .segments import CLICK_CLASSES, COND_DIM, IN_DIM, MAX_STEPS, WHEEL_CLASSES
+from .segments import CLICK_CLASSES, COND_DIM, FEATURES, IN_DIM, MAX_STEPS, WHEEL_CLASSES
 
 
 @dataclass
@@ -35,6 +35,7 @@ class ModelConfig:
     dropout: float = 0.1
     max_steps: int = MAX_STEPS
     pos_embedding: bool = False  # off: with little data it memorises by step index (elapsed time is an input)
+    features: int = FEATURES  # input feature version the model was trained with
 
     @classmethod
     def preset(cls, size: str, n_people: int) -> "ModelConfig":
@@ -198,6 +199,9 @@ def save(model: MoveModel, path, **extra) -> None:
 
 def load(path, device="cpu") -> tuple[MoveModel, dict]:
     ck = torch.load(path, map_location=device, weights_only=False)
+    if ck["config"].get("features", 1) != FEATURES:
+        raise ValueError(f"{path} was trained with an older version of the model inputs - "
+                         "retrain it with 'humanpc train-model'")
     model = MoveModel(ModelConfig(**ck["config"])).to(device)
     model.load_state_dict(ck["state"])
     model.eval()
