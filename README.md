@@ -263,6 +263,9 @@ humanpc eval-model      # re-score the saved model
 humanpc model-demo      # playground: watch it click, double/right-click, drag, scroll, read
 ```
 
+The repo includes sample data in separate folders: recordings in `data/training/` and the
+model trained on them in `data/model/` (`humanpc model-demo --model data/model/model.pt`).
+
 `model-demo` replays generated movements with a fake cursor (keys 1-7 pick the action,
 V shows 5 different paths for the same action, L lets the real cursor do it). Big datasets:
 add `--max-sessions N` to train/eval to bound memory.

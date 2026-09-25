@@ -93,6 +93,19 @@ heuristic (`learn/report.py`), not a measurement:
 
 `trainer-stats` shows the real detector score next to it once a model has been trained.
 
+## Bundled data
+
+The repo ships the maintainer's own data in two separate folders:
+
+- `data/training/` - recorded sessions (47 min, 9 sessions, ~1,570 movements) + `task_weights.json`
+- `data/model/` - the model trained on them (`model.pt`, ~1M parameters) + `metrics.json`, `train_log.json`
+
+```bash
+humanpc model-demo --model data/model/model.pt                       # try the bundled model
+humanpc train-model --data-dir data/training --out data/model --watch  # retrain it
+humanpc trainer-stats --data-dir data/training
+```
+
 ## Training the model
 
 ```bash
