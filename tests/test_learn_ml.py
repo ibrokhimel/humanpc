@@ -153,6 +153,24 @@ def test_kv_cache_matches_full_forward():
     assert torch.allclose(full["end"], torch.stack(ends, 1), atol=1e-5)
 
 
+def test_preallocated_cache_matches_full_forward_and_survives_row_drops():
+    torch.manual_seed(0)
+    m = _tiny_model().eval()
+    x, c, p = torch.randn(3, 17, IN_DIM), torch.randn(3, COND_DIM), torch.tensor([0, 1, 0])
+    with torch.no_grad():
+        full = m(x, c, p)
+        cache, ends = m.empty_cache(3, 32), []
+        for t in range(9):
+            o, cache = m(x[:, t:t + 1], c, p, cache=cache, start=t)
+            ends.append(o["end"][:, -1])
+        assert torch.allclose(full["end"][:, :9], torch.stack(ends, 1), atol=1e-5)
+        rows = torch.tensor([0, 2])  # row 1 finished: drop it and keep going
+        cache, c2, p2 = m.select_cache(cache, rows), c[rows], p[rows]
+        for t in range(9, 17):
+            o, cache = m(x[rows, t:t + 1], c2, p2, cache=cache, start=t)
+            assert torch.allclose(full["end"][rows, t], o["end"][:, -1], atol=1e-5)
+
+
 def test_training_step_reduces_loss_and_generation_runs(tmp_path):
     from humanpc.learn.ml.generate import MovementGenerator, generate, to_events
     from humanpc.learn.ml.model import load, losses, save
@@ -190,3 +208,4 @@ def test_land_on_target_pulls_endpoint_inside_radius():
     out = land_on_target(g, seg, (0.0, 0.0), random.Random(1))
     assert math.hypot(out["dx"].sum() - 300, out["dy"].sum()) <= 8.01
     assert np.allclose(out["dx"][:10], 12.0)  # early motion untouched
+
