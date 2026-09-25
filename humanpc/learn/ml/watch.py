@@ -3,8 +3,8 @@
 Training runs on a background thread. Every time it saves a new best model the
 window loads it (on the CPU) and keeps giving it the same 8-task exam: four
 clicks, two double-clicks, a right-click and a drag, with fixed starts and
-targets so rounds are comparable. Paths are the raw model output (no landing
-fix), so you can watch them go from wandering to clean.
+targets so rounds are comparable. Paths are what the tool would output minus the
+landing fix: the guard drops candidates outside the person's recorded range.
 
 The side panel shows the loss per epoch, each best model's exam score and, at
 the end, the detector's humanness result. Closing the window stops training;
@@ -24,7 +24,7 @@ from pathlib import Path
 import torch
 
 from ..events import DOWN, MOVE, UP
-from .generate import generate, to_events
+from .generate import generate_guarded, to_events
 from .model import load
 from .segments import Segment
 
@@ -61,7 +61,7 @@ class TrainingWatch:
         self.scores: dict[int, list[int]] = {}  # epoch -> [done, tries]
         self.notes: list[str] = []
         self.stage = "loading data..."
-        self.model = self.model_epoch = None
+        self.model = self.model_epoch = self.envelope = None
         self.exam_busy = False
         self.summary = None
 
@@ -90,7 +90,8 @@ class TrainingWatch:
 
     def _run_exam(self, model, epoch):
         try:
-            raws = generate(model, self.tasks, [0] * len(self.tasks), device="cpu", max_steps=EXAM_STEPS)
+            raws = generate_guarded(model, self.tasks, [0] * len(self.tasks), self.envelope, device="cpu",
+                                    max_steps=EXAM_STEPS, rng=random.Random(epoch))[0]
             self.results.put((epoch, raws))
         except Exception:  # noqa: BLE001
             traceback.print_exc()
@@ -151,6 +152,7 @@ class TrainingWatch:
                 try:
                     self.model, ck = load(self.model_path, "cpu")
                     self.model_epoch = ck.get("epoch", rec["epoch"])
+                    self.envelope = ck.get("envelope")
                     self.scores.setdefault(self.model_epoch, [0, 0])
                 except Exception:  # noqa: BLE001
                     traceback.print_exc()
@@ -180,7 +182,7 @@ class TrainingWatch:
             c.create_rectangle(s[0] - 4, s[1] - 4, s[0] + 4, s[1] + 4, outline=col)
         c.create_text(16, 14, anchor="nw", fill=FG, font=("Segoe UI", 13, "bold"), text=head)
         c.create_text(16, 40, anchor="nw", fill=DIM, font=("Segoe UI", 10),
-                      text="raw model output, no landing fix.  square = start, circle = target, "
+                      text="guarded model output, no landing fix.  square = start, circle = target, "
                            "ring = press, dot = release.")
 
     def _play(self, epoch, raws):
