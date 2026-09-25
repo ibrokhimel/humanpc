@@ -1,0 +1,58 @@
+{
+ "humanness_pct": 69.3,
+ "detector_accuracy": 0.653,
+ "finished_pct": 100.0,
+ "pairs": 189,
+ "by_kind": {
+  "aim": {
+   "accuracy": 0.664,
+   "n": 149
+  },
+  "aim_double": {
+   "accuracy": 0.4,
+   "n": 5
+  },
+  "aim_right": {
+   "accuracy": 0.5,
+   "n": 8
+  },
+  "drag": {
+   "accuracy": 0.545,
+   "n": 11
+  },
+  "idle": {
+   "accuracy": 1.0,
+   "n": 3
+  },
+  "scroll": {
+   "accuracy": 0.722,
+   "n": 9
+  },
+  "scroll_click": {
+   "accuracy": 0.75,
+   "n": 4
+  }
+ },
+ "guard_rejected_pct": 3.8,
+ "compare_medians": {
+  "duration_ms": {
+   "real": 780.0,
+   "generated": 800.0
+  },
+  "straightness": {
+   "real": 0.946,
+   "generated": 0.95
+  },
+  "peak_speed": {
+   "real": 1.803,
+   "generated": 1.803
+  },
+  "clicks": {
+   "real": 2.0,
+   "generated": 2.0
+  }
+ },
+ "reliable": true,
+ "model": "data/model/model.pt",
+ "model_epoch": 108
+}

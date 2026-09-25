@@ -1,0 +1,1463 @@
+{
+ "meta": {
+  "version": 1,
+  "humanpc": "0.1.0",
+  "session": "session_20260926_004306",
+  "person": null,
+  "mouse": {
+   "pointer_speed": 10,
+   "enhance_precision": true
+  },
+  "started": "20260926_004306",
+  "screen": [
+   1920,
+   1080
+  ],
+  "window_origin": [
+   0,
+   0
+  ],
+  "dpi_mode": "per_monitor_v2",
+  "seed": null,
+  "hook": "WH_MOUSE_LL",
+  "coords": "tasks in window px; events in screen px",
+  "scroll_step_px": 100,
+  "events": 49990,
+  "injected_dropped": 0,
+  "active_seconds": 102.25,
+  "weights": {
+   "point": 5.79,
+   "double": 2.0,
+   "right": 1.86,
+   "drag": 2.74,
+   "scroll": 2.4,
+   "scroll_click": 1.79,
+   "trace": 1.0,
+   "read": 0.81,
+   "chain": 2.9
+  }
+ },
+ "tasks": [
+  {
+   "kind": "right",
+   "params": {
+    "start": [
+     924,
+     142
+    ],
+    "start_r": 16,
+    "target": [
+     832,
+     198
+    ],
+    "r": 16.4
+   },
+   "t_shown_us": 1054961,
+   "t_start_us": 2022930,
+   "t_end_us": 2729909,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "trace",
+   "params": {
+    "points": [
+     [
+      1033,
+      274
+     ],
+     [
+      992,
+      284
+     ],
+     [
+      955,
+      293
+     ],
+     [
+      922,
+      302
+     ],
+     [
+      892,
+      310
+     ],
+     [
+      864,
+      317
+     ],
+     [
+      841,
+      325
+     ],
+     [
+      820,
+      331
+     ],
+     [
+      802,
+      337
+     ],
+     [
+      787,
+      343
+     ],
+     [
+      774,
+      348
+     ],
+     [
+      764,
+      353
+     ],
+     [
+      757,
+      358
+     ],
+     [
+      752,
+      362
+     ],
+     [
+      749,
+      367
+     ],
+     [
+      748,
+      370
+     ],
+     [
+      750,
+      374
+     ],
+     [
+      753,
+      377
+     ],
+     [
+      758,
+      380
+     ],
+     [
+      765,
+      383
+     ],
+     [
+      774,
+      386
+     ],
+     [
+      784,
+      389
+     ],
+     [
+      795,
+      391
+     ],
+     [
+      808,
+      394
+     ],
+     [
+      822,
+      396
+     ],
+     [
+      837,
+      399
+     ],
+     [
+      853,
+      401
+     ],
+     [
+      870,
+      404
+     ],
+     [
+      887,
+      406
+     ],
+     [
+      906,
+      409
+     ],
+     [
+      924,
+      412
+     ],
+     [
+      944,
+      415
+     ],
+     [
+      963,
+      418
+     ],
+     [
+      983,
+      421
+     ],
+     [
+      1003,
+      425
+     ],
+     [
+      1023,
+      429
+     ],
+     [
+      1043,
+      433
+     ],
+     [
+      1063,
+      437
+     ],
+     [
+      1082,
+      442
+     ],
+     [
+      1101,
+      447
+     ],
+     [
+      1119,
+      452
+     ],
+     [
+      1137,
+      458
+     ],
+     [
+      1154,
+      464
+     ],
+     [
+      1170,
+      471
+     ],
+     [
+      1186,
+      478
+     ],
+     [
+      1200,
+      485
+     ],
+     [
+      1213,
+      493
+     ],
+     [
+      1225,
+      502
+     ],
+     [
+      1235,
+      511
+     ],
+     [
+      1244,
+      521
+     ],
+     [
+      1251,
+      532
+     ],
+     [
+      1257,
+      543
+     ],
+     [
+      1260,
+      554
+     ],
+     [
+      1262,
+      567
+     ],
+     [
+      1262,
+      580
+     ],
+     [
+      1260,
+      594
+     ],
+     [
+      1255,
+      609
+     ],
+     [
+      1248,
+      624
+     ],
+     [
+      1239,
+      641
+     ],
+     [
+      1227,
+      658
+     ],
+     [
+      1212,
+      676
+     ]
+    ],
+    "width": 41
+   },
+   "t_shown_us": 3319379,
+   "t_start_us": 4872727,
+   "t_end_us": 7185089,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "right",
+   "params": {
+    "start": [
+     508,
+     621
+    ],
+    "start_r": 16,
+    "target": [
+     678,
+     920
+    ],
+    "r": 17.7
+   },
+   "t_shown_us": 7782034,
+   "t_start_us": 8610723,
+   "t_end_us": 9588521,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "drag",
+   "params": {
+    "box": [
+     209,
+     940
+    ],
+    "size": 82,
+    "zone": [
+     833,
+     797
+    ],
+    "zone_size": 136
+   },
+   "t_shown_us": 10070850,
+   "t_start_us": 10871787,
+   "t_end_us": 11635074,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "point",
+   "params": {
+    "start": [
+     689,
+     330
+    ],
+    "start_r": 16,
+    "target": [
+     727,
+     354
+    ],
+    "r": 60.2
+   },
+   "t_shown_us": 12235252,
+   "t_start_us": 13001716,
+   "t_end_us": 13437165,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "point",
+   "params": {
+    "start": [
+     1070,
+     501
+    ],
+    "start_r": 16,
+    "target": [
+     935,
+     512
+    ],
+    "r": 25.0
+   },
+   "t_shown_us": 13926480,
+   "t_start_us": 14627946,
+   "t_end_us": 15195448,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "point",
+   "params": {
+    "start": [
+     471,
+     400
+    ],
+    "start_r": 16,
+    "target": [
+     387,
+     445
+    ],
+    "r": 10.4
+   },
+   "t_shown_us": 15771697,
+   "t_start_us": 16485397,
+   "t_end_us": 17134321,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "drag",
+   "params": {
+    "box": [
+     1331,
+     899
+    ],
+    "size": 36,
+    "zone": [
+     1497,
+     921
+    ],
+    "zone_size": 101
+   },
+   "t_shown_us": 17599723,
+   "t_start_us": 18563082,
+   "t_end_us": 19041137,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "scroll",
+   "params": {
+    "offset": 17352,
+    "line": 18669,
+    "band_y": 479,
+    "band_h": 121,
+    "content": 20000
+   },
+   "t_shown_us": 19396876,
+   "t_start_us": null,
+   "t_end_us": null,
+   "errors": 0,
+   "result": "skipped"
+  },
+  {
+   "kind": "double",
+   "params": {
+    "start": [
+     1522,
+     724
+    ],
+    "start_r": 16,
+    "target": [
+     1463,
+     807
+    ],
+    "r": 78.3
+   },
+   "t_shown_us": 21106864,
+   "t_start_us": 22063059,
+   "t_end_us": 22806260,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "point",
+   "params": {
+    "start": [
+     950,
+     814
+    ],
+    "start_r": 16,
+    "target": [
+     1010,
+     661
+    ],
+    "r": 36.3
+   },
+   "t_shown_us": 23400503,
+   "t_start_us": 24148736,
+   "t_end_us": 24768701,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "point",
+   "params": {
+    "start": [
+     1610,
+     471
+    ],
+    "start_r": 16,
+    "target": [
+     1708,
+     473
+    ],
+    "r": 8.8
+   },
+   "t_shown_us": 25099914,
+   "t_start_us": 26004542,
+   "t_end_us": 26827865,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "right",
+   "params": {
+    "start": [
+     1139,
+     309
+    ],
+    "start_r": 16,
+    "target": [
+     1222,
+     529
+    ],
+    "r": 12.2
+   },
+   "t_shown_us": 27290806,
+   "t_start_us": 28278231,
+   "t_end_us": 29146327,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "right",
+   "params": {
+    "start": [
+     1024,
+     996
+    ],
+    "start_r": 16,
+    "target": [
+     873,
+     836
+    ],
+    "r": 23.4
+   },
+   "t_shown_us": 29495084,
+   "t_start_us": 30422453,
+   "t_end_us": 31225836,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "trace",
+   "params": {
+    "points": [
+     [
+      957,
+      874
+     ],
+     [
+      955,
+      874
+     ],
+     [
+      954,
+      874
+     ],
+     [
+      953,
+      873
+     ],
+     [
+      953,
+      872
+     ],
+     [
+      953,
+      870
+     ],
+     [
+      953,
+      868
+     ],
+     [
+      954,
+      866
+     ],
+     [
+      955,
+      863
+     ],
+     [
+      956,
+      860
+     ],
+     [
+      958,
+      857
+     ],
+     [
+      961,
+      853
+     ],
+     [
+      963,
+      850
+     ],
+     [
+      966,
+      846
+     ],
+     [
+      970,
+      842
+     ],
+     [
+      974,
+      837
+     ],
+     [
+      978,
+      833
+     ],
+     [
+      982,
+      829
+     ],
+     [
+      987,
+      824
+     ],
+     [
+      992,
+      819
+     ],
+     [
+      997,
+      815
+     ],
+     [
+      1003,
+      810
+     ],
+     [
+      1008,
+      806
+     ],
+     [
+      1015,
+      801
+     ],
+     [
+      1021,
+      797
+     ],
+     [
+      1028,
+      793
+     ],
+     [
+      1034,
+      788
+     ],
+     [
+      1042,
+      784
+     ],
+     [
+      1049,
+      780
+     ],
+     [
+      1056,
+      777
+     ],
+     [
+      1064,
+      774
+     ],
+     [
+      1072,
+      770
+     ],
+     [
+      1080,
+      768
+     ],
+     [
+      1089,
+      765
+     ],
+     [
+      1097,
+      763
+     ],
+     [
+      1106,
+      761
+     ],
+     [
+      1115,
+      760
+     ],
+     [
+      1124,
+      759
+     ],
+     [
+      1133,
+      758
+     ],
+     [
+      1142,
+      758
+     ],
+     [
+      1152,
+      758
+     ],
+     [
+      1161,
+      759
+     ],
+     [
+      1171,
+      761
+     ],
+     [
+      1181,
+      763
+     ],
+     [
+      1190,
+      766
+     ],
+     [
+      1200,
+      769
+     ],
+     [
+      1210,
+      773
+     ],
+     [
+      1220,
+      777
+     ],
+     [
+      1230,
+      783
+     ],
+     [
+      1241,
+      789
+     ],
+     [
+      1251,
+      795
+     ],
+     [
+      1261,
+      803
+     ],
+     [
+      1271,
+      811
+     ],
+     [
+      1281,
+      820
+     ],
+     [
+      1292,
+      830
+     ],
+     [
+      1302,
+      841
+     ],
+     [
+      1312,
+      853
+     ],
+     [
+      1322,
+      866
+     ],
+     [
+      1333,
+      880
+     ],
+     [
+      1343,
+      894
+     ],
+     [
+      1353,
+      910
+     ]
+    ],
+    "width": 56
+   },
+   "t_shown_us": 31679407,
+   "t_start_us": 32078062,
+   "t_end_us": 33664743,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "scroll",
+   "params": {
+    "offset": 14002,
+    "line": 17659,
+    "band_y": 754,
+    "band_h": 62,
+    "content": 20000
+   },
+   "t_shown_us": 34006798,
+   "t_start_us": null,
+   "t_end_us": null,
+   "errors": 0,
+   "result": "skipped"
+  },
+  {
+   "kind": "scroll_click",
+   "params": {
+    "offset": 6473,
+    "line": 8004,
+    "band_y": 727,
+    "band_h": 120,
+    "content": 20000,
+    "click_x": 1480,
+    "r": 34.4
+   },
+   "t_shown_us": 34700202,
+   "t_start_us": null,
+   "t_end_us": null,
+   "errors": 0,
+   "result": "skipped"
+  },
+  {
+   "kind": "drag",
+   "params": {
+    "box": [
+     1059,
+     588
+    ],
+    "size": 78,
+    "zone": [
+     820,
+     560
+    ],
+    "zone_size": 213
+   },
+   "t_shown_us": 35196815,
+   "t_start_us": 35885865,
+   "t_end_us": 36163071,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "point",
+   "params": {
+    "start": [
+     1003,
+     504
+    ],
+    "start_r": 16,
+    "target": [
+     1139,
+     323
+    ],
+    "r": 39.7
+   },
+   "t_shown_us": 36495391,
+   "t_start_us": 37234159,
+   "t_end_us": 38092290,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "scroll_click",
+   "params": {
+    "offset": 13411,
+    "line": 6314,
+    "band_y": 703,
+    "band_h": 83,
+    "content": 20000,
+    "click_x": 324,
+    "r": 27.6
+   },
+   "t_shown_us": 38378394,
+   "t_start_us": null,
+   "t_end_us": null,
+   "errors": 0,
+   "result": "skipped"
+  },
+  {
+   "kind": "chain",
+   "params": {
+    "points": [
+     [
+      1010,
+      851
+     ],
+     [
+      981,
+      744
+     ],
+     [
+      732,
+      651
+     ],
+     [
+      813,
+      797
+     ],
+     [
+      824,
+      897
+     ],
+     [
+      1373,
+      509
+     ]
+    ],
+    "r": 35.3
+   },
+   "t_shown_us": 39019049,
+   "t_start_us": 39019049,
+   "t_end_us": 42858923,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "scroll_click",
+   "params": {
+    "offset": 9337,
+    "line": 10479,
+    "band_y": 648,
+    "band_h": 181,
+    "content": 20000,
+    "click_x": 966,
+    "r": 16.9
+   },
+   "t_shown_us": 43136081,
+   "t_start_us": null,
+   "t_end_us": null,
+   "errors": 0,
+   "result": "skipped"
+  },
+  {
+   "kind": "point",
+   "params": {
+    "start": [
+     1597,
+     118
+    ],
+    "start_r": 16,
+    "target": [
+     1641,
+     137
+    ],
+    "r": 12.7
+   },
+   "t_shown_us": 43845689,
+   "t_start_us": 44917721,
+   "t_end_us": 45654070,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "point",
+   "params": {
+    "start": [
+     1827,
+     947
+    ],
+    "start_r": 16,
+    "target": [
+     1197,
+     786
+    ],
+    "r": 13.0
+   },
+   "t_shown_us": 46169733,
+   "t_start_us": 47203443,
+   "t_end_us": 48068921,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "chain",
+   "params": {
+    "points": [
+     [
+      971,
+      545
+     ],
+     [
+      938,
+      462
+     ],
+     [
+      868,
+      463
+     ],
+     [
+      746,
+      512
+     ],
+     [
+      766,
+      595
+     ]
+    ],
+    "r": 13.4
+   },
+   "t_shown_us": 48480904,
+   "t_start_us": 48480904,
+   "t_end_us": 51320459,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "chain",
+   "params": {
+    "points": [
+     [
+      1154,
+      107
+     ],
+     [
+      1235,
+      167
+     ],
+     [
+      1427,
+      453
+     ],
+     [
+      1468,
+      355
+     ],
+     [
+      1412,
+      284
+     ]
+    ],
+    "r": 16.4
+   },
+   "t_shown_us": 51674342,
+   "t_start_us": 51674342,
+   "t_end_us": 55128111,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "point",
+   "params": {
+    "start": [
+     1530,
+     281
+    ],
+    "start_r": 16,
+    "target": [
+     1485,
+     316
+    ],
+    "r": 11.4
+   },
+   "t_shown_us": 55416505,
+   "t_start_us": 56206088,
+   "t_end_us": 56987820,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "scroll",
+   "params": {
+    "offset": 4051,
+    "line": 5650,
+    "band_y": 655,
+    "band_h": 87,
+    "content": 20000
+   },
+   "t_shown_us": 57280807,
+   "t_start_us": null,
+   "t_end_us": null,
+   "errors": 0,
+   "result": "skipped"
+  },
+  {
+   "kind": "chain",
+   "params": {
+    "points": [
+     [
+      1559,
+      354
+     ],
+     [
+      1470,
+      777
+     ],
+     [
+      1460,
+      635
+     ],
+     [
+      1500,
+      724
+     ],
+     [
+      1534,
+      311
+     ],
+     [
+      1364,
+      409
+     ]
+    ],
+    "r": 18.2
+   },
+   "t_shown_us": 57897005,
+   "t_start_us": 57897005,
+   "t_end_us": 62342585,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "scroll_click",
+   "params": {
+    "offset": 17699,
+    "line": 16067,
+    "band_y": 397,
+    "band_h": 76,
+    "content": 20000,
+    "click_x": 1385,
+    "r": 20.5
+   },
+   "t_shown_us": 62752428,
+   "t_start_us": null,
+   "t_end_us": null,
+   "errors": 0,
+   "result": "skipped"
+  },
+  {
+   "kind": "right",
+   "params": {
+    "start": [
+     1568,
+     502
+    ],
+    "start_r": 16,
+    "target": [
+     1790,
+     541
+    ],
+    "r": 58.3
+   },
+   "t_shown_us": 63400240,
+   "t_start_us": 64246833,
+   "t_end_us": 64988992,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "point",
+   "params": {
+    "start": [
+     679,
+     307
+    ],
+    "start_r": 16,
+    "target": [
+     716,
+     430
+    ],
+    "r": 6.4
+   },
+   "t_shown_us": 65480644,
+   "t_start_us": 66447570,
+   "t_end_us": 67440530,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "drag",
+   "params": {
+    "box": [
+     258,
+     698
+    ],
+    "size": 85,
+    "zone": [
+     384,
+     653
+    ],
+    "zone_size": 205
+   },
+   "t_shown_us": 67914086,
+   "t_start_us": 68573215,
+   "t_end_us": 69312916,
+   "errors": 1,
+   "result": "ok"
+  },
+  {
+   "kind": "drag",
+   "params": {
+    "box": [
+     414,
+     793
+    ],
+    "size": 51,
+    "zone": [
+     518,
+     735
+    ],
+    "zone_size": 151
+   },
+   "t_shown_us": 69668305,
+   "t_start_us": 70378954,
+   "t_end_us": 70595861,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "chain",
+   "params": {
+    "points": [
+     [
+      743,
+      697
+     ],
+     [
+      795,
+      236
+     ],
+     [
+      1403,
+      465
+     ],
+     [
+      1493,
+      363
+     ],
+     [
+      1563,
+      609
+     ]
+    ],
+    "r": 11.3
+   },
+   "t_shown_us": 71159303,
+   "t_start_us": 71159303,
+   "t_end_us": 75089148,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "drag",
+   "params": {
+    "box": [
+     310,
+     292
+    ],
+    "size": 32,
+    "zone": [
+     510,
+     284
+    ],
+    "zone_size": 87
+   },
+   "t_shown_us": 75485231,
+   "t_start_us": 76403050,
+   "t_end_us": 76819689,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "point",
+   "params": {
+    "start": [
+     327,
+     578
+    ],
+    "start_r": 16,
+    "target": [
+     411,
+     371
+    ],
+    "r": 87.5
+   },
+   "t_shown_us": 77261900,
+   "t_start_us": 78128361,
+   "t_end_us": 78916108,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "chain",
+   "params": {
+    "points": [
+     [
+      1257,
+      541
+     ],
+     [
+      1187,
+      517
+     ],
+     [
+      1123,
+      988
+     ]
+    ],
+    "r": 29.6
+   },
+   "t_shown_us": 79394980,
+   "t_start_us": 79394980,
+   "t_end_us": 82336903,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "point",
+   "params": {
+    "start": [
+     881,
+     609
+    ],
+    "start_r": 16,
+    "target": [
+     1006,
+     224
+    ],
+    "r": 65.9
+   },
+   "t_shown_us": 82920409,
+   "t_start_us": 83750601,
+   "t_end_us": 84437370,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "right",
+   "params": {
+    "start": [
+     618,
+     204
+    ],
+    "start_r": 16,
+    "target": [
+     597,
+     251
+    ],
+    "r": 32.4
+   },
+   "t_shown_us": 84820040,
+   "t_start_us": 85601466,
+   "t_end_us": 86254150,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "point",
+   "params": {
+    "start": [
+     495,
+     315
+    ],
+    "start_r": 16,
+    "target": [
+     457,
+     420
+    ],
+    "r": 8.0
+   },
+   "t_shown_us": 86815122,
+   "t_start_us": 87570723,
+   "t_end_us": 88323139,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "right",
+   "params": {
+    "start": [
+     998,
+     649
+    ],
+    "start_r": 16,
+    "target": [
+     936,
+     745
+    ],
+    "r": 48.0
+   },
+   "t_shown_us": 88841994,
+   "t_start_us": 89700061,
+   "t_end_us": 90407754,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "double",
+   "params": {
+    "start": [
+     1096,
+     249
+    ],
+    "start_r": 16,
+    "target": [
+     1112,
+     312
+    ],
+    "r": 34.1
+   },
+   "t_shown_us": 90789060,
+   "t_start_us": 91689405,
+   "t_end_us": 92571427,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "drag",
+   "params": {
+    "box": [
+     1361,
+     830
+    ],
+    "size": 61,
+    "zone": [
+     1104,
+     904
+    ],
+    "zone_size": 131
+   },
+   "t_shown_us": 92889996,
+   "t_start_us": 93607546,
+   "t_end_us": 94175578,
+   "errors": 0,
+   "result": "ok"
+  },
+  {
+   "kind": "read",
+   "params": {
+    "text": "Humans rarely hold the mouse perfectly still. Small drifts, tiny corrections and idle nudges happen while reading. Just read naturally, then press Done.",
+    "min_seconds": 6.7,
+    "done": [
+     803,
+     735
+    ]
+   },
+   "t_shown_us": 94567146,
+   "t_start_us": 94567146,
+   "t_end_us": 102176026,
+   "errors": 0,
+   "result": "ok"
+  }
+ ]
+}
