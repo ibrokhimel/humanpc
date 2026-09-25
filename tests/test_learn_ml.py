@@ -237,3 +237,26 @@ def test_watch_exam_is_fixed_and_inside_the_window():
         for x, y in (seg.target, start):
             assert 0 < x < W and 0 < y < H
 
+
+def test_envelope_guard_rejects_runaways_and_unfinished_paths():
+    from humanpc.learn.ml.generate import envelope, within_envelope
+
+    segs = extract(*_session(n_tasks=12))
+    env = envelope(segs)
+    assert "aim" in env and env["aim"]["overshoot_px"] >= 0
+    seg, start = Segment("aim", 0, 0, target=(300.0, 0.0), radius=10), (0.0, 0.0)
+    clean = {"dx": np.full(30, 10.0), "dy": np.zeros(30), "finished": True}
+    runaway = {"dx": np.full(30, 40.0), "dy": np.zeros(30), "finished": True}  # ends 900 px past
+    assert within_envelope(clean, seg, start, env)
+    assert not within_envelope(runaway, seg, start, env)
+    assert not within_envelope({**clean, "finished": False}, seg, start, env)
+
+
+def test_generate_guarded_returns_one_path_per_job(tmp_path):
+    from humanpc.learn.ml.generate import generate_guarded
+
+    m = _tiny_model().eval()
+    jobs = [(Segment("aim", 0, 0, target=(200.0, 50.0), radius=12), (0.0, 0.0))] * 3
+    paths, rejected = generate_guarded(m, jobs, [0, 0, 0], {}, candidates=2, max_steps=20,
+                                       rng=random.Random(0))
+    assert len(paths) == 3 and 0.0 <= rejected <= 1.0

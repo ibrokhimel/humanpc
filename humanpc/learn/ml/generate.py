@@ -63,6 +63,66 @@ def generate(model, jobs: list[tuple[Segment, tuple[float, float]]], persons: li
             for b, seg_steps in enumerate(steps)]
 
 
+# -- human envelope guard -----------------------------------------------------------
+# A small share of free-running paths leave every state the recordings cover (e.g. far past
+# the target, where nobody ever is) and never recover. The guard generates a few candidates
+# per movement and drops any that go beyond the recorded person's own worst ~1%.
+ENVELOPE_MARGIN = 1.5
+
+
+def _shape(dx, dy, dist: float) -> tuple[float, float]:
+    x, y = np.cumsum(dx), np.cumsum(dy)
+    return (max(0.0, float(x.max()) - dist) if len(x) else 0.0,
+            float(np.abs(y).max()) / max(dist, 1.0) if len(y) else 0.0)
+
+
+def envelope(segs: list[Segment]) -> dict:
+    """Per kind: 99th percentile of overshoot (px) and sideways excursion (fraction of distance)."""
+    by_kind: dict[str, list[tuple[float, float]]] = {}
+    for sg in segs:
+        if sg.target is None or not sg.arrays:
+            continue
+        dist = math.hypot(sg.target[0] - sg.start[0], sg.target[1] - sg.start[1])
+        dxdy = sg.arrays["dxdy"] * POS_SCALE
+        by_kind.setdefault(sg.kind, []).append(_shape(dxdy[:, 0], dxdy[:, 1], dist))
+    return {k: {"overshoot_px": float(np.percentile([v[0] for v in vals], 99)),
+                "sideways": float(np.percentile([v[1] for v in vals], 99))}
+            for k, vals in by_kind.items() if len(vals) >= 20}
+
+
+def within_envelope(gen: dict, seg: Segment, start, env: dict | None) -> bool:
+    if not gen["finished"]:
+        return False
+    lim = (env or {}).get(seg.kind)
+    if seg.target is None or not lim:
+        return True
+    over, side = _shape(gen["dx"], gen["dy"], math.hypot(seg.target[0] - start[0], seg.target[1] - start[1]))
+    return (over <= max(ENVELOPE_MARGIN * lim["overshoot_px"], 2 * seg.radius + 10)
+            and side <= max(ENVELOPE_MARGIN * lim["sideways"], 0.2))
+
+
+def generate_guarded(model, jobs, persons, env: dict | None, *, candidates: int = 4,
+                     rng: random.Random | None = None, **kw) -> tuple[list[dict], float]:
+    """Like ``generate`` but keeps, per job, a random candidate inside the envelope.
+
+    Returns (paths, share of candidates rejected). Picking at random among the valid ones
+    (not "the smoothest") keeps the natural variety of the paths.
+    """
+    rng = rng or random.Random()
+    gens = generate(model, [j for j in jobs for _ in range(candidates)],
+                    [p for p in persons for _ in range(candidates)], **kw)
+    out, rejected = [], 0
+    for i, (seg, start) in enumerate(jobs):
+        group = gens[i * candidates:(i + 1) * candidates]
+        ok = [g for g in group if within_envelope(g, seg, start, env)]
+        rejected += candidates - len(ok)
+        if not ok:  # all out: least-bad finished one, else the first
+            ok = sorted((g for g in group if g["finished"]),
+                        key=lambda g: _shape(g["dx"], g["dy"], 0)[0])[:1] or group[:1]
+        out.append(rng.choice(ok))
+    return out, rejected / max(1, len(jobs) * candidates)
+
+
 def land_on_target(gen: dict, seg: Segment, start, rng: random.Random | None = None) -> dict:
     """Nudge the path so it ends inside the target (spread over the last 40% of motion)."""
     if seg.target is None or not len(gen["dx"]):
@@ -120,25 +180,26 @@ class MovementGenerator:
     >>> events = gen.move((100, 100), (900, 500), radius=12)
     """
 
-    def __init__(self, model, people: list[str], device="cpu"):
-        self.model, self.people, self.device = model, people, device
+    def __init__(self, model, people: list[str], device="cpu", envelope: dict | None = None):
+        self.model, self.people, self.device, self.envelope = model, people, device, envelope
 
     @classmethod
     def load(cls, path, device: str | None = None) -> "MovementGenerator":
         from pathlib import Path
         device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         model, ck = load(Path(path).expanduser(), device)
-        return cls(model, ck.get("people", ["me"]), device)
+        return cls(model, ck.get("people", ["me"]), device, ck.get("envelope"))
 
     def person_id(self, person: str | None) -> int:
         return self.people.index(person) if person in self.people else 0
 
     def move(self, start, target, *, radius: float = 10.0, kind: str = "aim", person: str | None = None,
-             temperature: float = 1.0, land: bool = True, scroll_px: float = 0.0) -> list[tuple]:
+             temperature: float = 1.0, land: bool = True, scroll_px: float = 0.0,
+             candidates: int = 4) -> list[tuple]:
         seg = Segment(kind, 0, 0, target=None if kind == "scroll" else tuple(target), radius=radius,
                       scroll_px=scroll_px)
-        gen = generate(self.model, [(seg, tuple(start))], [self.person_id(person)],
-                       device=self.device, temperature=temperature)[0]
+        gen = generate_guarded(self.model, [(seg, tuple(start))], [self.person_id(person)], self.envelope,
+                               candidates=candidates, device=self.device, temperature=temperature)[0][0]
         if land:
             gen = land_on_target(gen, seg, start)
         return to_events(gen, seg, start)

@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from .generate import envelope
 from .model import ModelConfig, MoveModel, losses, save
 from .segments import Segment, load_all
 
@@ -154,6 +155,7 @@ def train(data_dir: Path, out_dir: Path | None = None, *, epochs: int = 1000, si
     if len(segs) < 20:
         raise ValueError(f"only {len(segs)} usable movements - record more with 'humanpc trainer' first")
     people = sorted({s.person for s in segs})
+    env = envelope(segs)
     tr = [s for s in segs if not is_val(s)]
     va = [s for s in segs if is_val(s)] or tr[: max(1, len(tr) // 10)]
     if mirror:
@@ -187,7 +189,7 @@ def train(data_dir: Path, out_dir: Path | None = None, *, epochs: int = 1000, si
         mark = ""
         if val["total"] < best:
             best, best_epoch, mark = val["total"], ep, "  *best"
-            save(model, out_dir / "model.pt", people=people, epoch=ep, val_loss=best, size=size)
+            save(model, out_dir / "model.pt", people=people, epoch=ep, val_loss=best, size=size, envelope=env)
         log(f"epoch {ep:3d}  train {trl['total']:.4f}  val {val['total']:.4f}  "
             f"(move {val['moved']:.3f} path {val['mdn']:.3f} click {val['click']:.3f} "
             f"wheel {val['wheel']:.3f} end {val['end']:.3f})  {time.time() - t0:.1f}s{mark}")
