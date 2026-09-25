@@ -35,6 +35,8 @@ how humans actually move, type, read, and decide** — with a different, consist
 pip install -e .            # core (zero dependencies; dry-run + tests work as-is)
 pip install -e .[all]       # real input, screen capture, OCR, UIA, windows
 pip install -e .[server]    # FastAPI HTTP + MCP tool server
+pip install -e .[learn]     # movement trainer storage (numpy)
+pip install -e .[ml]        # model training (torch; install the CUDA build first)
 ```
 
 Every backend is lazy-loaded, so `import humanpc` pulls in nothing heavy. On a
@@ -223,6 +225,59 @@ steps:
 
 ---
 
+## Movement trainer
+
+Record **real** human mouse movement to train a model that moves like a person.
+A fullscreen app prompts tasks — point-to-point clicks, double/right clicks,
+drags, scrolling, path tracing, reading (idle drift), click chains — while a
+low-level hook records the raw 1000 Hz hardware stream (software-injected
+input is dropped). About 2–3 MB per hour.
+
+```bash
+humanpc trainer                     # Space start · Esc pause · S skip · Q save & quit
+humanpc trainer --person alice      # record someone else on this PC
+humanpc trainer-stats               # readable report + rough humanness estimate
+```
+
+**Collecting from other PCs** — no Python needed there:
+
+```bash
+python scripts/build_trainer_exe.py          # -> dist/HumanpcTrainer.exe (~24 MB)
+```
+
+They double-click the exe, enter a name, and do the tasks. `Desktop\mousedata_<name>.zip`
+is refreshed in the background on every save (every 15 tasks, pause, leaving the
+window, quit, even a crash) and always holds all of their sessions. Back here:
+
+```bash
+humanpc trainer-import mousedata_alice.zip   # validated; duplicates skipped
+humanpc trainer-export out.zip --person bob  # the reverse
+```
+
+**Train the model** on your GPU (needs a CUDA build of PyTorch):
+
+```bash
+humanpc train-model     # Transformer + detector -> measured humanness, updates task weights
+humanpc eval-model      # re-score the saved model
+humanpc model-demo      # playground: watch it click, double/right-click, drag, scroll, read
+```
+
+`model-demo` replays generated movements with a fake cursor (keys 1-7 pick the action,
+V shows 5 different paths for the same action, L lets the real cursor do it). Big datasets:
+add `--max-sessions N` to train/eval to bound memory.
+
+Only record people who know what is collected and why. The estimate in
+`trainer-stats` is a heuristic, not a measurement — see
+[`docs/TRAINER.md`](docs/TRAINER.md) for the data format, the estimate, and
+multi-person training notes.
+
+## Design docs
+
+- [`docs/BUILD_PHASES.md`](docs/BUILD_PHASES.md) — live build tracker (what's done / in progress).
+- [`docs/PLAN.md`](docs/PLAN.md) — implementation plan, architecture, file layout, roadmap.
+- [`docs/blueprint/`](docs/blueprint/) — the Human Interaction Layer research blueprint + diagrams.
+- [`docs/TRAINER.md`](docs/TRAINER.md) — movement trainer: tasks, data format, humanness estimate.
+
 ## Measuring realism
 
 Realism here is *measured*, not asserted. `humanpc.validation` extracts the
@@ -272,6 +327,7 @@ humanpc/
 ├── windows/ · system/  # window/app management; clipboard, shell
 ├── flows/            # YAML flow runner, record/replay
 ├── safety/           # kill-switch, dry-run, limits, audit log
+├── learn/            # movement trainer + learned model (humanpc/learn/ml)
 ├── validation.py     # realism feature extraction & scoring
 └── cli.py · server/  # CLI, HTTP + MCP tool server
 
