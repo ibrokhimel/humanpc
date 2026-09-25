@@ -8,7 +8,9 @@ direction is still given as a condition).
 
 Per step the model predicts: moved? (dx, dy) · click event · wheel notches · end.
 Per step it sees: the previous step + the state *before* this step (vector still
-to go, elapsed time, buttons held, scroll still to go). ``Rollout`` recomputes the
+to go, elapsed time, buttons held, scroll still to go) + kinematics humans steer by:
+velocity over the last 50 ms, time-to-contact with the target, time spent inside
+the target and time since the cursor last really moved. ``Rollout`` recomputes the
 same state incrementally during generation; tests pin the two together.
 """
 
@@ -33,7 +35,10 @@ CLICK_CLASSES = 5  # none, L down, L up, R down, R up
 WHEEL_MAX = 3
 WHEEL_CLASSES = 2 * WHEEL_MAX + 1
 STEP_DIM = 2 + 1 + CLICK_CLASSES + WHEEL_CLASSES  # 15
-STATE_DIM = 9
+STATE_DIM = 14
+FEATURES = 2  # bump when the input features change; older checkpoints must be retrained
+VEL_WINDOW = 5  # steps (50 ms) of velocity the model sees smoothed
+STILL_PX = 1.5  # a step of at most 1 px (incl. diagonal) counts as "still"; off the integer-length lattice
 IN_DIM = STEP_DIM + STATE_DIM
 COND_DIM = len(GEN_KINDS) + 7
 
@@ -162,6 +167,22 @@ def _to_go(remaining, seg: Segment):
     return np.log1p(remaining / max(seg.radius, 1.0))
 
 
+def _kinematics(vx, vy, remaining, inside_steps, still_steps, has_target: bool):
+    """Smoothed velocity, time-to-contact, time inside target, time still (shared by both twins)."""
+    speed = np.hypot(vx, vy)
+    ttc = np.log1p(remaining / np.maximum(speed, 0.5)) / 5 if has_target else np.zeros_like(speed)
+    return [vx / POS_SCALE, vy / POS_SCALE, ttc,
+            np.minimum(inside_steps * BIN_MS / 1000.0, 2.0), np.minimum(still_steps * BIN_MS / 1000.0, 2.0)]
+
+
+def _run_length(flags) -> np.ndarray:
+    out, run = np.zeros(len(flags)), 0
+    for i, f in enumerate(flags):
+        run = run + 1 if f else 0
+        out[i] = run
+    return out
+
+
 def condition(seg: Segment, start: tuple[float, float]) -> np.ndarray:
     ang = _angle(start, seg.target)
     dist = 0.0 if seg.target is None else math.hypot(seg.target[0] - start[0], seg.target[1] - start[1])
@@ -248,10 +269,19 @@ def states(seg: Segment, start, dx, dy, click, wheel) -> np.ndarray:
         held_l = held_l + 1  # the segment starts with the button already down
     wsum = np.concatenate([[0], np.cumsum(wheel)[:-1]])
     d = max(dist, 1.0)
+    remaining = np.hypot(rx, ry)
+    # velocity over the VEL_WINDOW steps *before* each step (zero-padded at the start)
+    kern = np.ones(VEL_WINDOW) / VEL_WINDOW
+    vx = np.concatenate([[0.0], np.convolve(dx, kern)[:n - 1]])
+    vy = np.concatenate([[0.0], np.convolve(dy, kern)[:n - 1]])
+    has_target = seg.target is not None
+    inside = _run_length((remaining <= seg.radius + HIT_SLOP_PX) & has_target)
+    still = np.concatenate([[0.0], _run_length(np.hypot(dx, dy) <= STILL_PX)[:-1]])
     st = np.stack([rx / d, ry / d, _slog(rx), _slog(ry), np.arange(n) * BIN_MS / 1000.0,
                    np.clip(held_l, 0, 1), np.clip(held_r, 0, 1),
                    (seg.scroll_px + wsum * SCROLL_STEP) / 1000.0,
-                   _to_go(np.hypot(rx, ry), seg)], axis=1)
+                   _to_go(remaining, seg),
+                   *_kinematics(vx, vy, remaining, inside, still, has_target)], axis=1)
     return st.astype(np.float32)
 
 
@@ -270,14 +300,27 @@ class Rollout:
         self.prev = np.zeros(STEP_DIM, np.float32)  # first input step is all zeros, like training
         self._releases: list[int] = []
         self.finished = False
+        self._recent: list[tuple[float, float]] = []  # last VEL_WINDOW steps
+        self.still = 0
+        self.inside = int(self._in_zone())
+
+    def _in_zone(self) -> bool:
+        if self.seg.target is None:
+            return False
+        return math.hypot(self.dist - self.cx, self.cy) <= self.seg.radius + HIT_SLOP_PX
 
     def state(self) -> np.ndarray:
         rx, ry = (self.dist - self.cx, -self.cy) if self.seg.target is not None else (0.0, 0.0)
         d = max(self.dist, 1.0)
+        vx = sum(p[0] for p in self._recent) / VEL_WINDOW
+        vy = sum(p[1] for p in self._recent) / VEL_WINDOW
+        remaining = math.hypot(rx, ry)
+        kin = _kinematics(np.float64(vx), np.float64(vy), remaining, self.inside, self.still,
+                          self.seg.target is not None)
         return np.array([rx / d, ry / d, _slog(rx), _slog(ry), self.n * BIN_MS / 1000.0,
                          min(max(self.held_l, 0), 1), min(max(self.held_r, 0), 1),
                          (self.seg.scroll_px + self.wsum * SCROLL_STEP) / 1000.0,
-                         _to_go(math.hypot(rx, ry), self.seg)], np.float32)
+                         _to_go(remaining, self.seg), *kin], np.float32)
 
     def input(self) -> np.ndarray:
         return np.concatenate([self.prev, self.state()])
@@ -290,6 +333,9 @@ class Rollout:
         self.held_r += (click == 3) - (click == 4)
         self.wsum += wheel
         self.n += 1
+        self._recent = (self._recent + [(dx, dy)])[-VEL_WINDOW:]
+        self.still = self.still + 1 if math.hypot(dx, dy) <= STILL_PX else 0
+        self.inside = self.inside + 1 if self._in_zone() else 0
         rule = FINISH.get(self.seg.kind)
         if rule and click == rule[0] and self.on_target():
             self._releases = [t for t in self._releases if self.n - t <= DOUBLE_STEPS] + [self.n]

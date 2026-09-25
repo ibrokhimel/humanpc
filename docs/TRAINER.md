@@ -93,18 +93,41 @@ heuristic (`learn/report.py`), not a measurement:
 
 `trainer-stats` shows the real detector score next to it once a model has been trained.
 
+## Bundled data
+
+The repo ships the maintainer's own data in two separate folders:
+
+- `data/training/` - recorded sessions (47 min, 9 sessions, ~1,570 movements) + `task_weights.json`
+- `data/model/` - the model trained on them (`model.pt`, ~1M parameters) + `metrics.json`, `train_log.json`
+
+```bash
+humanpc model-demo --model data/model/model.pt                       # try the bundled model
+humanpc train-model --data-dir data/training --out data/model --watch  # retrain it
+humanpc trainer-stats --data-dir data/training
+```
+
 ## Training the model
 
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cu128   # GPU build (CUDA 12.8)
 humanpc train-model                  # trains on everything, then runs the detector
+humanpc train-model --watch          # same, with a live window of the best model so far
 humanpc eval-model                   # re-run just the detector on the saved model
 ```
 
-Options: `--epochs` (default 60, early-stops after 10 epochs without improvement),
+Options: `--epochs` (upper limit, default 1000; it stops by itself after 15 epochs without
+improvement, usually after a few hundred), `--watch`,
 `--size auto|small|base|large` (auto picks by data volume; bigger overfits small datasets),
 `--batch-tokens` (lower it if the GPU runs out of memory), `--cpu`, `--no-eval`.
 Output: `<data-dir>/model/model.pt`, `train_log.json`, `metrics.json`.
+
+`--watch` opens a window while it trains. Each time a new best model is saved, the window
+gives it the same 8 fixed tasks (clicks, double-clicks, a right-click, a drag) and replays
+its raw output (no landing fix), next to a loss chart and each best model's task score.
+Closing the window stops training; the best model so far is kept.
+
+Speed: the whole dataset is kept on the GPU (up to 4M steps), so an epoch of ~1 hour of
+data takes under a second on an RTX 3060; a full run plus the detector is 2-3 minutes.
 
 **Data prep** (`learn/ml/segments.py`, numpy only). Each task becomes goal-directed
 *segments*: a point task gives two (reach the start dot, reach the target), a chain one per
@@ -115,11 +138,24 @@ steps in a frame rotated so the target lies on +x. A terminal "stop" step follow
 target size, scroll amount) and a per-person embedding are added to every step. Per step it
 predicts *moved?*, a Gaussian mixture over (dx, dy), click class, wheel notches and stop.
 Inputs are the previous step plus state: vector still to go, distance to go in target radii,
-elapsed time, buttons held, scroll still to go. Training uses bf16 autocast, AdamW with
-cosine decay, and top-bottom mirror augmentation. There is no step-index embedding: with
+elapsed time, buttons held, scroll still to go, velocity over the last 50 ms, time-to-contact
+with the target, time spent inside the target and time since the cursor last moved.
+During training the previous-step and velocity inputs are jittered (`HISTORY_NOISE = 0.25`).
+Without it the model learns to copy momentum from the person's real steps; generating, it
+copies its own slightly-off steps, errors compound, and it arrives too fast, overshoots and
+fidgets near the target (measured: worst-10% overshoot 54 px vs the person's 14). With the
+jitter it steers by position and distance instead (16 px). Models trained before this
+change must be retrained (loading one says so). Training uses bf16 autocast, AdamW with
+warmup then halving the learning rate after 5 epochs without improvement, and top-bottom mirror augmentation. There is no step-index embedding: with
 little data it made the model memorise by position instead of steering to the target.
 
-**Generation** (`learn/ml/generate.py`). Batched, KV-cached sampling. Impossible clicks
+**Generation** (`learn/ml/generate.py`). Batched sampling with a preallocated KV cache;
+finished movements are dropped from the batch so one slow path doesn't hold up the rest.
+**Guard:** a few % of free-running paths reach states no recording covers (e.g. far past the
+target) and never recover. Training saves the person's *envelope* (99th percentile of
+overshoot and sideways excursion per movement kind) in `model.pt`; `MovementGenerator.move`,
+the demo, `--watch` and the detector generate 4 candidates and keep a random one inside 1.5x
+that envelope. The detector reports how many candidates the guard replaced. Impossible clicks
 (releasing an unheld button) are masked out. Click-ending segments stop exactly like the
 task does, on the required release inside the target; only plain scrolls use the learned
 stop. `MovementGenerator.load(path).move(start, target, radius=...)` returns screen-space

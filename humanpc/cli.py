@@ -82,12 +82,13 @@ def build_parser() -> argparse.ArgumentParser:
     tm = add("train-model")
     tm.add_argument("--data-dir")
     tm.add_argument("--out", help="model folder (default <data-dir>/model)")
-    tm.add_argument("--epochs", type=int, default=60)
+    tm.add_argument("--epochs", type=int, default=1000, help="upper limit; stops by itself once it stops improving")
     tm.add_argument("--size", default="auto", choices=["auto", "small", "base", "large"])
     tm.add_argument("--batch-tokens", type=int, default=32768, help="steps per batch (lower = less GPU memory)")
     tm.add_argument("--cpu", action="store_true")
     tm.add_argument("--no-eval", action="store_true", help="skip the detector evaluation")
     tm.add_argument("--max-sessions", type=int, help="cap sessions loaded (big datasets / low RAM)")
+    tm.add_argument("--watch", action="store_true", help="open a window that shows the best model so far in action")
     em = add("eval-model")
     em.add_argument("--data-dir")
     em.add_argument("--model", help="model.pt (default <data-dir>/model/model.pt)")
@@ -203,9 +204,22 @@ def _model_cmd(args) -> int:
                 raise FileNotFoundError(f"no model at {model} - run 'humanpc train-model' first")
             run_demo(model)
         elif args.cmd == "train-model":
+            from functools import partial
+            from pathlib import Path
+
             from .learn.ml.train import train
-            summary = train(root, args.out, epochs=args.epochs, size=args.size,
-                            token_budget=args.batch_tokens, cpu=args.cpu, max_sessions=args.max_sessions)
+            run = partial(train, root, args.out, epochs=args.epochs, size=args.size,
+                          token_budget=args.batch_tokens, cpu=args.cpu, max_sessions=args.max_sessions)
+            if args.watch:
+                from .learn.ml.watch import run_watch
+                model = Path(args.out or Path(root) / "model") / "model.pt"
+                measure = None if args.no_eval else (lambda m: format_metrics(
+                    evaluate(root, m, cpu=args.cpu, max_sessions=args.max_sessions)))
+                if run_watch(model, run, measure) is None:
+                    print("training stopped before it finished (window closed?)", file=sys.stderr)
+                    return 1
+                return 0
+            summary = run()
             print(f"\nbest model: epoch {summary['best_epoch']}, val loss {summary['best_val_loss']:.4f}"
                   f" -> {summary['model']}  ({summary['minutes']} min)")
             if not args.no_eval:

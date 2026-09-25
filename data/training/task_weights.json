@@ -1,0 +1,11 @@
+{
+ "point": 2.98,
+ "double": 0.5,
+ "right": 0.5,
+ "drag": 0.95,
+ "scroll": 1.75,
+ "scroll_click": 1.0,
+ "trace": 1.0,
+ "read": 0.5,
+ "chain": 1.49
+}
