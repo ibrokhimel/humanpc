@@ -28,6 +28,7 @@ pip install -e .            # core (zero dependencies; dry-run + tests work as-i
 pip install -e .[all]       # real input, capture, OCR, UIA, windows
 pip install -e .[server]    # FastAPI HTTP + MCP tool server
 pip install -e .[learn]     # movement trainer storage (numpy)
+pip install -e .[ml]        # model training (torch; install the CUDA build first)
 ```
 
 ## Usage
@@ -100,6 +101,18 @@ window, quit, even a crash) and always holds all of their sessions. Back here:
 humanpc trainer-import mousedata_alice.zip   # validated; duplicates skipped
 humanpc trainer-export out.zip --person bob  # the reverse
 ```
+
+**Train the model** on your GPU (needs a CUDA build of PyTorch):
+
+```bash
+humanpc train-model     # Transformer + detector -> measured humanness, updates task weights
+humanpc eval-model      # re-score the saved model
+humanpc model-demo      # playground: watch it click, double/right-click, drag, scroll, read
+```
+
+`model-demo` replays generated movements with a fake cursor (keys 1-7 pick the action,
+V shows 5 different paths for the same action, L lets the real cursor do it). Big datasets:
+add `--max-sessions N` to train/eval to bound memory.
 
 Only record people who know what is collected and why. The estimate in
 `trainer-stats` is a heuristic, not a measurement — see

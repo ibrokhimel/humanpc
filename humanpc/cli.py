@@ -79,6 +79,25 @@ def build_parser() -> argparse.ArgumentParser:
     ti.add_argument("zip", nargs="+", help="zip file(s) exported by the trainer")
     ti.add_argument("--data-dir")
     ti.add_argument("--person", help="override the name stored in the zip")
+    tm = add("train-model")
+    tm.add_argument("--data-dir")
+    tm.add_argument("--out", help="model folder (default <data-dir>/model)")
+    tm.add_argument("--epochs", type=int, default=60)
+    tm.add_argument("--size", default="auto", choices=["auto", "small", "base", "large"])
+    tm.add_argument("--batch-tokens", type=int, default=32768, help="steps per batch (lower = less GPU memory)")
+    tm.add_argument("--cpu", action="store_true")
+    tm.add_argument("--no-eval", action="store_true", help="skip the detector evaluation")
+    tm.add_argument("--max-sessions", type=int, help="cap sessions loaded (big datasets / low RAM)")
+    em = add("eval-model")
+    em.add_argument("--data-dir")
+    em.add_argument("--model", help="model.pt (default <data-dir>/model/model.pt)")
+    em.add_argument("--temperature", type=float, default=1.0)
+    em.add_argument("--cpu", action="store_true")
+    em.add_argument("--max-sessions", type=int)
+    em.add_argument("--no-weights", action="store_true", help="don't rewrite task_weights.json")
+    md = add("model-demo")
+    md.add_argument("--data-dir")
+    md.add_argument("--model", help="model.pt (default <data-dir>/model/model.pt)")
     return p
 
 
@@ -139,7 +158,8 @@ def _trainer_cmd(args) -> int:
             _emit(args, run_trainer(person_dir(root, args.person), minutes=args.minutes, seed=args.seed,
                                     keep_injected=args.keep_injected, person=args.person))
         elif args.cmd == "trainer-stats":
-            from .learn.report import format_people, format_report, polling_hz_of_latest, summary
+            from .learn.report import (format_people, format_report, load_measured, polling_hz_of_latest,
+                                       summary)
             from .learn.dataset import people, stats
             data_dir = person_dir(root, args.person)
             everyone = not args.person
@@ -147,7 +167,8 @@ def _trainer_cmd(args) -> int:
             if args.json:
                 _emit(args, {**st, "estimate": summary(st)})
             else:
-                print(format_report(st, polling_hz=polling_hz_of_latest(data_dir)))
+                print(format_report(st, polling_hz=polling_hz_of_latest(data_dir),
+                                    measured=None if args.person else load_measured(root)))
                 if everyone and people(root):
                     print(format_people(root))
         elif args.cmd == "trainer-export":
@@ -156,6 +177,43 @@ def _trainer_cmd(args) -> int:
         elif args.cmd == "trainer-import":
             from .learn.transfer import import_zip
             _emit(args, [import_zip(z, root, person=args.person) for z in args.zip])
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _model_cmd(args) -> int:
+    try:
+        import torch  # noqa: F401
+    except ImportError:
+        print("error: needs PyTorch - see docs/TRAINER.md (GPU: pip install torch "
+              "--index-url https://download.pytorch.org/whl/cu128)", file=sys.stderr)
+        return 1
+    from .learn.dataset import default_data_dir
+    from .learn.ml.detector import evaluate, format_metrics
+    root = args.data_dir or default_data_dir()
+    try:
+        if args.cmd == "model-demo":
+            from pathlib import Path
+
+            from .learn.ml.demo import run_demo
+            model = Path(args.model) if args.model else Path(root) / "model" / "model.pt"
+            if not model.exists():
+                raise FileNotFoundError(f"no model at {model} - run 'humanpc train-model' first")
+            run_demo(model)
+        elif args.cmd == "train-model":
+            from .learn.ml.train import train
+            summary = train(root, args.out, epochs=args.epochs, size=args.size,
+                            token_budget=args.batch_tokens, cpu=args.cpu, max_sessions=args.max_sessions)
+            print(f"\nbest model: epoch {summary['best_epoch']}, val loss {summary['best_val_loss']:.4f}"
+                  f" -> {summary['model']}  ({summary['minutes']} min)")
+            if not args.no_eval:
+                print(format_metrics(evaluate(root, summary["model"], cpu=args.cpu,
+                                              max_sessions=args.max_sessions)))
+        else:
+            print(format_metrics(evaluate(root, args.model, temperature=args.temperature, cpu=args.cpu,
+                                          max_sessions=args.max_sessions, write_weights=not args.no_weights)))
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -174,6 +232,8 @@ def main(argv=None) -> int:
 
     if args.cmd.startswith("trainer"):
         return _trainer_cmd(args)
+    if args.cmd in ("train-model", "eval-model", "model-demo"):
+        return _model_cmd(args)
 
     if args.cmd == "serve":
         if args.mcp:
