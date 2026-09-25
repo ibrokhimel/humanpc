@@ -23,34 +23,41 @@ _CLICK_EVENT = {1: (DOWN, BTN_LEFT), 2: (UP, BTN_LEFT), 3: (DOWN, BTN_RIGHT), 4:
 @torch.no_grad()
 def generate(model, jobs: list[tuple[Segment, tuple[float, float]]], persons: list[int], *,
              device="cpu", temperature: float = 1.0, max_steps: int = MAX_STEPS) -> list[dict]:
-    """jobs: (segment spec, start position). Returns rotated-frame step arrays per job."""
+    """jobs: (segment spec, start position). Returns rotated-frame step arrays per job.
+
+    Batched with a preallocated KV cache; finished rows are dropped from the batch, so
+    one slow movement doesn't keep the whole batch busy.
+    """
     model.eval()
     n = len(jobs)
     rolls = [Rollout(seg, start) for seg, start in jobs]
     cond = torch.tensor(np.stack([condition(seg, start) for seg, start in jobs]), device=device)
     person = torch.tensor(persons, device=device, dtype=torch.long)
-    cache = model.empty_cache()
+    cache = model.empty_cache(n, max_steps, device)
+    active = list(range(n))  # job index of each batch row
     done = np.zeros(n, bool)
     steps: list[list[tuple]] = [[] for _ in range(n)]
     for t in range(max_steps):
-        inp = torch.tensor(np.stack([r.input() for r in rolls]), device=device)[:, None]
+        inp = torch.tensor(np.stack([rolls[b].input() for b in active]), device=device)[:, None]
         out, cache = model(inp, cond, person, cache=cache, start=t)
-        mask = torch.tensor([r.click_mask() for r in rolls], device=device)
+        mask = torch.tensor([rolls[b].click_mask() for b in active], device=device)
         s = {k: v.cpu().numpy() for k, v in sample(out, temperature, mask).items()}
-        for b in range(n):
-            if done[b]:
-                continue
-            learned_end = jobs[b][0].kind not in FINISH
-            if learned_end and s["end"][b]:  # the terminal step carries no motion
+        for row, b in enumerate(active):
+            if jobs[b][0].kind not in FINISH and s["end"][row]:  # learned end: the terminal step has no motion
                 done[b] = True
                 continue
-            dx, dy = (s["dxdy"][b] * POS_SCALE).tolist()
-            click, wheel = int(s["click"][b]), int(s["wheel"][b]) - WHEEL_MAX
+            dx, dy = (s["dxdy"][row] * POS_SCALE).tolist()
+            click, wheel = int(s["click"][row]), int(s["wheel"][row]) - WHEEL_MAX
             rolls[b].push(dx, dy, click, wheel)
             steps[b].append((dx, dy, click, wheel))
             done[b] = rolls[b].finished  # click-ending kinds stop exactly like the task does
-        if done.all():
+        keep = [row for row, b in enumerate(active) if not done[b]]
+        if not keep:
             break
+        if len(keep) < len(active):
+            rows = torch.tensor(keep, device=device)
+            cache, cond, person = model.select_cache(cache, rows), cond[rows], person[rows]
+            active = [active[row] for row in keep]
     return [{**{k: np.array([st[i] for st in seg_steps], dtype=np.float64 if i < 2 else np.int64)
                 for i, k in enumerate(("dx", "dy", "click", "wheel"))}, "finished": bool(done[b])}
             for b, seg_steps in enumerate(steps)]
