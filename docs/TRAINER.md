@@ -91,7 +91,80 @@ heuristic (`learn/report.py`), not a measurement:
 - Below 300 aiming movements it reports "not enough data to train".
 - Calibrated so a balanced ~1 h dataset ≈ 17%, ~10 h ≈ 65–70%.
 
-It will be replaced by a real detector score once the training pipeline exists.
+`trainer-stats` shows the real detector score next to it once a model has been trained.
+
+## Training the model
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cu128   # GPU build (CUDA 12.8)
+humanpc train-model                  # trains on everything, then runs the detector
+humanpc eval-model                   # re-run just the detector on the saved model
+```
+
+Options: `--epochs` (default 60, early-stops after 10 epochs without improvement),
+`--size auto|small|base|large` (auto picks by data volume; bigger overfits small datasets),
+`--batch-tokens` (lower it if the GPU runs out of memory), `--cpu`, `--no-eval`.
+Output: `<data-dir>/model/model.pt`, `train_log.json`, `metrics.json`.
+
+**Data prep** (`learn/ml/segments.py`, numpy only). Each task becomes goal-directed
+*segments*: a point task gives two (reach the start dot, reach the target), a chain one per
+dot, plus drag, scroll, scroll-click and read/idle segments. Events are binned into 10 ms
+steps in a frame rotated so the target lies on +x. A terminal "stop" step follows the last event.
+
+**Model** (`learn/ml/model.py`). Causal Transformer; condition (kind, distance, direction,
+target size, scroll amount) and a per-person embedding are added to every step. Per step it
+predicts *moved?*, a Gaussian mixture over (dx, dy), click class, wheel notches and stop.
+Inputs are the previous step plus state: vector still to go, distance to go in target radii,
+elapsed time, buttons held, scroll still to go. Training uses bf16 autocast, AdamW with
+cosine decay, and top-bottom mirror augmentation. There is no step-index embedding: with
+little data it made the model memorise by position instead of steering to the target.
+
+**Generation** (`learn/ml/generate.py`). Batched, KV-cached sampling. Impossible clicks
+(releasing an unheld button) are masked out. Click-ending segments stop exactly like the
+task does, on the required release inside the target; only plain scrolls use the learned
+stop. `MovementGenerator.load(path).move(start, target, radius=...)` returns screen-space
+events; `land_on_target` nudges the final 40% of motion so the endpoint lands inside the target.
+
+**Detector** (`learn/ml/detector.py`). For each real movement the model generates one
+under the same condition. A bidirectional GRU is trained to tell them apart (3-fold), and
+**measured humanness = 2 × (1 − accuracy)**. The report also shows the share of generated
+movements that completed their task and real-vs-model medians (duration, straightness, peak
+speed, clicks). Per-kind accuracy rewrites `task_weights.json` so the trainer asks for more
+of what gets caught. `trainer-stats` shows the measured score next to the estimate.
+
+Reference point: about 10 minutes of recordings (~470 movements) gave 7% measured humanness,
+and 55% of generated movements completed their task. That matches the estimate for that much
+data: the model is data-limited, not broken.
+
+## Model demo
+
+`humanpc model-demo [--model PATH]` opens a playground window. A fake cursor replays
+generated movements at real speed; the bottom bar reports duration, whether the task
+finished, and the outcome (last click on/off target, release inside/outside the zone,
+line in/out of the band).
+
+| Key | Action |
+|---|---|
+| 1 / 2 / 3 | click / double-click / right-click (click places the target, wheel sizes it) |
+| 4 | drag the box into the zone |
+| 5 / 6 | scroll the red line into the band / scroll then click the dot (wheel sets scroll distance) |
+| 7 | read (idle drift), then click Done |
+| Space / V | random setup / the same action 5 times at once to show variation |
+| C / L / Esc | landing correction on-off / live mode (real cursor, clicks stay in the window) / stop-quit |
+
+## Big datasets
+
+- `--max-sessions N` on `train-model` / `eval-model` loads N sessions spread evenly across
+  the data. Prepared data costs roughly 45 MB per recorded hour of RAM.
+- Batch lengths are rounded up to multiples of 64 so the CUDA caching allocator sees few
+  distinct shapes. Without this, fragmentation on a 12 GB card spilled into shared system
+  memory (Windows WDDM) and epochs became ~30x slower. `expandable_segments` is not
+  available on Windows.
+- The detector scores only held-out movements when there are at least 100, so a model
+  that memorises its training set gets no credit.
+- Reference points: ~470 movements of real data gave 7% humanness and 55% completion. On a
+  *synthetic* dataset (explicitly labelled as generator output, not human), ~3,800 movements
+  gave 30% and 94%: the pipeline scales with data.
 
 ## Multiple people
 

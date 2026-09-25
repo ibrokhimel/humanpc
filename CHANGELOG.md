@@ -23,6 +23,25 @@ was committed directly to `main` (see [`docs/BUILD_PHASES.md`](docs/BUILD_PHASES
   `Desktop/mousedata_<name>.zip` current in the background after every save.
 - New `learn` extra (`numpy`).
 
+### Learned movement model (`humanpc/learn/ml`)
+- **`humanpc train-model`** — trains a causal Transformer (10 ms steps, rotated frame,
+  per-person style embedding; heads: moved, (dx, dy) Gaussian mixture, click, wheel, stop)
+  on all recordings with bf16 autocast on CUDA, mirror augmentation and early stopping.
+- **Detector** (`humanpc eval-model`, and automatically after training) — a GRU classifier
+  real vs generated gives a *measured* humanness (2 × (1 − accuracy)), completion rate and
+  real-vs-model medians; it rewrites `task_weights.json` to target weak spots, and
+  `trainer-stats` shows the measured score beside the estimate.
+- **`MovementGenerator`** — batched, KV-cached generation with click-validity masking,
+  task-rule termination and a landing correction; returns screen-space events.
+- New `ml` extra (`numpy`, `torch`).
+- **`humanpc model-demo`** — playground window for all seven actions (click, double,
+  right, drag, scroll, scroll+click, read) with a fake cursor, 5-path variation view,
+  landing-correction toggle and an opt-in live mode.
+- `--max-sessions` for train/eval; the detector scores held-out movements only.
+- Fix: batch lengths padded to multiples of 64, which stops CUDA allocator fragmentation
+  (epochs were ~30x slower on larger datasets from WDDM memory spill).
+- Fix: session decoding accepts a scalar `x0`/`y0` as written by other tools.
+
 ### Provenance & timing (Tier 0 — see [`GAP_ANALYSIS.md`](GAP_ANALYSIS.md))
 - **Keystroke dwell:** typed characters now go through `char_down → hold → char_up`
   with a realistic, right-skewed key-hold time (`hil/typing/DwellModel`) instead of

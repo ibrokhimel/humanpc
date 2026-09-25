@@ -68,8 +68,8 @@ def decode(cols) -> dict:
     return {
         "t_us": np.cumsum(cols["dt_us"].astype(np.int64)),
         "type": cols["type"].astype(np.int64),
-        "x": int(cols["x0"][0]) + np.cumsum(cols["dx"].astype(np.int64)),
-        "y": int(cols["y0"][0]) + np.cumsum(cols["dy"].astype(np.int64)),
+        "x": int(np.ravel(cols["x0"])[0]) + np.cumsum(cols["dx"].astype(np.int64)),
+        "y": int(np.ravel(cols["y0"])[0]) + np.cumsum(cols["dy"].astype(np.int64)),
         "button": cols["button"].astype(np.int64),
         "wheel": cols["wheel"].astype(np.int64),
     }

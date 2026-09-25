@@ -139,7 +139,7 @@ def summary(st: dict) -> dict:
     }
 
 
-def format_report(st: dict, *, polling_hz: float | None = None) -> str:
+def format_report(st: dict, *, polling_hz: float | None = None, measured: dict | None = None) -> str:
     _, _, rule_ch, dot = _glyphs()
     units = st.get("units", {})
     s = summary(st)
@@ -169,6 +169,9 @@ def format_report(st: dict, *, polling_hz: float | None = None) -> str:
     lines += ["", f"  Estimated humanness   {pct:4.1f}%   {_bar(pct / 100, 30)}",
               f"  {'':22}(practical ceiling ~{s['ceiling_pct']:.0f}%)",
               f"  {s['verdict']}"]
+    if measured:
+        lines.insert(len(lines) - 2, f"  Measured humanness    {measured['humanness_pct']:4.1f}%   "
+                     f"{_bar(measured['humanness_pct'] / 100, 30)}  (detector, last trained model)")
 
     if s["next_milestone_pct"] is not None and s["minutes_to_next"] is not None:
         mins = max(5, round(s["minutes_to_next"] / 5) * 5)
@@ -224,3 +227,14 @@ def format_people(root) -> str:
     lines += ["", "  The combined estimate above assumes one model trained on everyone with a",
               "  per-person style code; each person's own line is what their data gives alone.", ""]
     return "\n".join(lines)
+
+
+def load_measured(data_dir) -> dict | None:
+    """Metrics written by the detector after the last ``humanpc train-model`` / ``eval-model``."""
+    import json
+    from pathlib import Path
+    p = Path(data_dir) / "model" / "metrics.json"
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+    except (OSError, ValueError):
+        return None
