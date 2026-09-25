@@ -23,6 +23,7 @@ from .segments import Segment, load_all
 
 ARRAY_KEYS = ("inputs", "dxdy", "moved", "click", "wheel", "end")
 PAD_TO = 64  # round batch lengths up: few distinct shapes keep the CUDA allocator from fragmenting
+HISTORY_NOISE = 0.25  # see noisy_history
 GPU_CACHE_STEPS = 4_000_000  # up to this many steps (~0.7 GB) the whole dataset lives on the GPU
 
 
@@ -43,6 +44,24 @@ def mirrored(seg: Segment) -> Segment:
     a["dxdy"][:, 1] *= -1
     a["cond"][len(GEN_KINDS) + 2] *= -1  # sin(direction)
     return replace(seg, arrays=a, session=seg.session + ":mirror")
+
+
+def noisy_history(inputs, strength: float):
+    """Jitter the previous step and the smoothed velocity inputs (training only).
+
+    Fed the person's real steps, the model learns to copy momentum (consecutive steps are
+    ~0.9 correlated). Generating, it copies its *own* slightly-off steps, errors compound,
+    and it arrives too fast, overshoots and fidgets near the target. With unreliable
+    momentum it has to steer by the exact position and distance-to-target inputs instead.
+    """
+    if strength <= 0:
+        return inputs
+    from .segments import STEP_DIM
+    cols = [0, 1, STEP_DIM + 9, STEP_DIM + 10]  # previous (dx, dy), 50 ms velocity (vx, vy)
+    inputs = inputs.clone()
+    z = inputs[..., cols]
+    inputs[..., cols] = z * (1 + strength * torch.randn_like(z)) + 0.1 * strength * torch.randn_like(z)
+    return inputs
 
 
 def auto_size(total_steps: int) -> str:
@@ -84,7 +103,8 @@ def batches(segs: list[Segment], people: list[str], token_budget: int, *, shuffl
         yield b
 
 
-def run_epoch(model, cached: list[dict], opt, sched, *, device, train: bool, amp_dtype):
+def run_epoch(model, cached: list[dict], opt, sched, *, device, train: bool, amp_dtype,
+              history_noise: float = 0.0):
     """One pass over batches already on ``device`` (built once; only their order changes)."""
     model.train(train)
     totals, count = {}, 0
@@ -94,7 +114,8 @@ def run_epoch(model, cached: list[dict], opt, sched, *, device, train: bool, amp
         b = {k: v.to(device, non_blocking=True) for k, v in b.items()}  # no-op when already there
         with torch.set_grad_enabled(train), torch.autocast(device.type, dtype=amp_dtype,
                                                            enabled=device.type == "cuda"):
-            out = model(b["inputs"], b["cond"], b["person"])
+            inputs = noisy_history(b["inputs"], history_noise) if train else b["inputs"]
+            out = model(inputs, b["cond"], b["person"])
             ls = losses(out, b)
         if train:
             opt.zero_grad(set_to_none=True)
@@ -112,6 +133,7 @@ def run_epoch(model, cached: list[dict], opt, sched, *, device, train: bool, amp
 
 def train(data_dir: Path, out_dir: Path | None = None, *, epochs: int = 1000, size: str = "auto",
           token_budget: int = 32_768, lr: float = 3e-4, patience: int = 15, plateau: int = 5, seed: int = 0,
+          history_noise: float = HISTORY_NOISE,
           cpu: bool = False, mirror: bool = True, max_sessions: int | None = None, log=print,
           on_epoch=None) -> dict:
     """Train until validation stops improving (``epochs`` is only an upper bound).
@@ -156,7 +178,8 @@ def train(data_dir: Path, out_dir: Path | None = None, *, epochs: int = 1000, si
     t_start = time.time()
     for ep in range(1, epochs + 1):
         t0 = time.time()
-        trl = run_epoch(model, tr_b, opt, sched, device=device, train=True, amp_dtype=amp_dtype)
+        trl = run_epoch(model, tr_b, opt, sched, device=device, train=True, amp_dtype=amp_dtype,
+                        history_noise=history_noise)
         with torch.no_grad():
             val = run_epoch(model, va_b, opt, None, device=device, train=False, amp_dtype=amp_dtype)
         history.append({"epoch": ep, "train": trl, "val": val, "seconds": round(time.time() - t0, 2),
