@@ -258,9 +258,13 @@ humanpc trainer-export out.zip --person bob  # the reverse
 
 ```bash
 humanpc train-model     # Transformer + detector -> measured humanness, updates task weights
+humanpc train-model --watch   # same, with a live window showing the best model so far
 humanpc eval-model      # re-score the saved model
 humanpc model-demo      # playground: watch it click, double/right-click, drag, scroll, read
 ```
+
+The repo includes sample data in separate folders: recordings in `data/training/` and the
+model trained on them in `data/model/` (`humanpc model-demo --model data/model/model.pt`).
 
 `model-demo` replays generated movements with a fake cursor (keys 1-7 pick the action,
 V shows 5 different paths for the same action, L lets the real cursor do it). Big datasets:

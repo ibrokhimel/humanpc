@@ -23,7 +23,7 @@ import torch.nn as nn
 
 from ..dataset import WEIGHTS_FILE
 from ..tasks import DEFAULT_WEIGHTS
-from .generate import generate
+from .generate import generate, generate_guarded
 from .model import load
 from .segments import BIN_MS, COND_DIM, IN_DIM, load_all, pack
 
@@ -94,7 +94,7 @@ def _path_stats(dx, dy, click) -> dict:
 
 def evaluate(data_dir: Path, model_path: Path | None = None, *, max_pairs: int = 600,
              temperature: float = 1.0, folds: int = 3, cpu: bool = False, write_weights: bool = True,
-             max_sessions: int | None = None, log=print) -> dict:
+             max_sessions: int | None = None, guard: bool = True, log=print) -> dict:
     data_dir = Path(data_dir)
     model_path = Path(model_path) if model_path else data_dir / "model" / "model.pt"
     device = torch.device("cuda" if torch.cuda.is_available() and not cpu else "cpu")
@@ -110,12 +110,19 @@ def evaluate(data_dir: Path, model_path: Path | None = None, *, max_pairs: int =
     random.Random(0).shuffle(segs)
     segs = segs[:max_pairs]
     log(f"generating {len(segs)} movements to compare against your real ones...")
-    fakes = []
+    fakes, rejected = [], []
+    env = ck.get("envelope") if guard else None
     for i in range(0, len(segs), 128):
         chunk = segs[i:i + 128]
         jobs = [(replace(s, arrays={}), s.start) for s in chunk]
-        fakes += generate(model, jobs, [pid.get(s.person, 0) for s in chunk], device=device,
-                          temperature=temperature)
+        persons = [pid.get(s.person, 0) for s in chunk]
+        if env is not None:  # score what the tool actually outputs: guarded paths
+            g, r = generate_guarded(model, jobs, persons, env, device=device, temperature=temperature,
+                                    rng=random.Random(i))
+            fakes += g
+            rejected.append(r)
+        else:
+            fakes += generate(model, jobs, persons, device=device, temperature=temperature)
     pairs = []
     for s, g in zip(segs, fakes):
         if len(g["dx"]) >= 1:
@@ -145,7 +152,8 @@ def evaluate(data_dir: Path, model_path: Path | None = None, *, max_pairs: int =
     finished = float(np.mean([p[3]["finished"] for p in pairs])) if pairs else 0.0
     metrics = {"humanness_pct": round(humanness, 1), "detector_accuracy": round(acc, 3),
                "finished_pct": round(100 * finished, 1),
-               "pairs": len(pairs), "by_kind": by_kind, "compare_medians": compare,
+               "pairs": len(pairs), "by_kind": by_kind,
+               "guard_rejected_pct": round(100 * float(np.mean(rejected)), 1) if rejected else None, "compare_medians": compare,
                "reliable": len(pairs) >= 150, "model": str(model_path), "model_epoch": ck.get("epoch")}
     (model_path.parent / "metrics.json").write_text(json.dumps(metrics, indent=1))
     if write_weights and by_kind:
@@ -166,6 +174,9 @@ def format_metrics(m: dict) -> str:
              f"  Measured humanness   {m['humanness_pct']:.0f}%   "
              f"(detector accuracy {m['detector_accuracy'] * 100:.0f}% on {m['pairs']} real/generated pairs)"]
     lines.append(f"  Generated movements that completed their task: {m.get('finished_pct', 0):.0f}%")
+    if m.get("guard_rejected_pct") is not None:
+        lines.append(f"  Guard: {m['guard_rejected_pct']:.1f}% of candidate paths left your recorded range "
+                     "and were replaced")
     if not m["reliable"]:
         lines.append("  Few movements yet - treat this number as noisy.")
     lines += ["", f"    {'movement':<14}{'caught':>8}{'pairs':>7}"]

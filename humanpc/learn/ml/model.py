@@ -22,7 +22,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .segments import CLICK_CLASSES, COND_DIM, IN_DIM, MAX_STEPS, WHEEL_CLASSES
+from .segments import CLICK_CLASSES, COND_DIM, FEATURES, IN_DIM, MAX_STEPS, WHEEL_CLASSES
 
 
 @dataclass
@@ -35,6 +35,7 @@ class ModelConfig:
     dropout: float = 0.1
     max_steps: int = MAX_STEPS
     pos_embedding: bool = False  # off: with little data it memorises by step index (elapsed time is an input)
+    features: int = FEATURES  # input feature version the model was trained with
 
     @classmethod
     def preset(cls, size: str, n_people: int) -> "ModelConfig":
@@ -54,14 +55,19 @@ class Block(nn.Module):
         self.drop = nn.Dropout(dropout)
         self.p = dropout
 
-    def forward(self, x, cache=None):
+    def forward(self, x, cache=None, start: int = 0):
         b, t, d = x.shape
         q, k, v = self.qkv(self.ln1(x)).split(d, dim=2)
         q, k, v = (z.view(b, t, self.heads, d // self.heads).transpose(1, 2) for z in (q, k, v))
         if cache is not None:
-            if cache[0] is not None:
-                k, v = torch.cat([cache[0], k], 2), torch.cat([cache[1], v], 2)
-            cache = (k, v)
+            if len(cache) == 3:  # preallocated (k_buf, v_buf, "fixed"): write in place, no reallocation
+                cache[0][:, :, start:start + t] = k
+                cache[1][:, :, start:start + t] = v
+                k, v = cache[0][:, :, :start + t], cache[1][:, :, :start + t]
+            else:
+                if cache[0] is not None:
+                    k, v = torch.cat([cache[0], k], 2), torch.cat([cache[1], v], 2)
+                cache = (k, v)
         causal = t > 1  # with a cache, t == 1 attends to everything before it
         y = F.scaled_dot_product_attention(q, k, v, is_causal=causal,
                                            dropout_p=self.p if self.training else 0.0)
@@ -101,7 +107,7 @@ class MoveModel(nn.Module):
             x = x + self.pos(pos)[None]
         new_cache = []
         for i, blk in enumerate(self.blocks):
-            x, c = blk(x, None if cache is None else cache[i])
+            x, c = blk(x, None if cache is None else cache[i], start)
             new_cache.append(c)
         out = self.split(self.head(self.ln(x)).float())
         return (out, new_cache) if cache is not None else out
@@ -119,8 +125,20 @@ class MoveModel(nn.Module):
                 "log_sigma": take(2 * k).unflatten(-1, (k, 2)).clamp(-6, 4), "rho": torch.tanh(take(k)) * 0.95,
                 "click": take(CLICK_CLASSES), "wheel": take(WHEEL_CLASSES), "end": take(1).squeeze(-1)}
 
-    def empty_cache(self):
-        return [(None, None) for _ in self.blocks]
+    def empty_cache(self, batch: int | None = None, max_len: int | None = None, device=None):
+        """Growing cache by default; with ``batch`` + ``max_len`` a preallocated one (fast, no fragmentation)."""
+        if batch is None:
+            return [(None, None) for _ in self.blocks]
+        d, h = self.cfg.d_model, self.cfg.n_heads
+        w = next(self.parameters())
+        shape = (batch, h, max_len, d // h)
+        return [(torch.empty(shape, device=device or w.device, dtype=w.dtype),
+                 torch.empty(shape, device=device or w.device, dtype=w.dtype), "fixed") for _ in self.blocks]
+
+    @staticmethod
+    def select_cache(cache, rows):
+        """Keep only batch ``rows`` (a LongTensor) of a cache."""
+        return [tuple(z[rows] if torch.is_tensor(z) else z for z in c) for c in cache]
 
     def config_dict(self) -> dict:
         return asdict(self.cfg)
@@ -181,6 +199,9 @@ def save(model: MoveModel, path, **extra) -> None:
 
 def load(path, device="cpu") -> tuple[MoveModel, dict]:
     ck = torch.load(path, map_location=device, weights_only=False)
+    if ck["config"].get("features", 1) != FEATURES:
+        raise ValueError(f"{path} was trained with an older version of the model inputs - "
+                         "retrain it with 'humanpc train-model'")
     model = MoveModel(ModelConfig(**ck["config"])).to(device)
     model.load_state_dict(ck["state"])
     model.eval()

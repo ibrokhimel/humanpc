@@ -38,6 +38,20 @@ was committed directly to `main` (see [`docs/BUILD_PHASES.md`](docs/BUILD_PHASES
   right, drag, scroll, scroll+click, read) with a fake cursor, 5-path variation view,
   landing-correction toggle and an opt-in live mode.
 - `--max-sessions` for train/eval; the detector scores held-out movements only.
+- **`train-model --watch`** — live window: the best model so far replays a fixed 8-task exam
+  (raw output), with a loss chart, per-model exam scores and the final humanness.
+- Training runs until it stops improving (`--epochs` is now an upper limit, default 1000):
+  warmup, then the learning rate halves after 5 flat epochs; stop after 15. The dataset is
+  cached on the GPU once instead of rebuilt every epoch.
+- Fix: overshoot-then-fidget and long hovering before the click. Root cause: the model
+  copied momentum from its own slightly-off steps (exposure bias). New kinematic inputs
+  (50 ms velocity, time-to-contact, time in target, time still) + history noise in training;
+  worst-10% overshoot 54 px -> 16 px (person: 14), hover before click 421 -> 332 ms (323).
+  Older checkpoints must be retrained.
+- **Guard** — generation keeps a random one of 4 candidates inside the person's recorded
+  envelope (per-kind 99th percentile overshoot / sideways), removing runaway paths.
+- Faster generation: preallocated KV cache and finished rows dropped from the batch; the
+  detector evaluation went from ~165 s to ~23 s on ~1 hour of data.
 - Fix: batch lengths padded to multiples of 64, which stops CUDA allocator fragmentation
   (epochs were ~30x slower on larger datasets from WDDM memory spill).
 - Fix: session decoding accepts a scalar `x0`/`y0` as written by other tools.

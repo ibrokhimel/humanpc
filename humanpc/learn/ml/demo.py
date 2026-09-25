@@ -14,6 +14,7 @@ Keys / mouse:
     Space        random target / random scroll distance, then run
     V            same action 5 times at once: see how the paths differ
     C            landing correction on/off (off = the raw model output)
+    G            guard on/off (on = drop paths outside your recorded range, like the real tool)
     L            live mode on/off: the REAL cursor performs it (clicks stay in this window; Esc stops)
     Esc          stop live playback / quit
 """
@@ -27,7 +28,7 @@ from pathlib import Path
 
 from ..events import DOWN, MOVE, UP, WHEEL
 from ..task_runtime import SCROLL_STEP
-from .generate import MovementGenerator, generate, land_on_target, to_events
+from .generate import MovementGenerator, generate, generate_guarded, land_on_target, to_events
 from .segments import Segment
 
 BG, FG, MUTED, ZONE = "#111827", "#e2e8f0", "#718096", "#2d3748"
@@ -54,6 +55,7 @@ class Demo:
         self.radius = 16.0
         self.scroll_px = 1200.0
         self.land = True
+        self.guard = True
         self.live = False
         self.playing = False
         self.stop_live = False
@@ -129,6 +131,9 @@ class Demo:
         elif k == "c":
             self.land = not self.land
             self._say(f"landing correction {'ON' if self.land else 'OFF (raw model output)'}")
+        elif k == "g":
+            self.guard = not self.guard
+            self._say(f"guard {'ON' if self.guard else 'OFF (raw model output, runaways included)'}")
         elif k == "l":
             self.live = not self.live
             self._say("LIVE mode ON - the real cursor will move, click and scroll (Esc stops)" if self.live
@@ -178,7 +183,11 @@ class Demo:
         self.root.update()
         seg = self._segment()
         t0 = time.perf_counter()
-        raws = generate(self.gen.model, [(seg, self.cursor)] * n, [0] * n, device=self.gen.device)
+        if self.guard:
+            raws = generate_guarded(self.gen.model, [(seg, self.cursor)] * n, [0] * n, self.gen.envelope,
+                                    device=self.gen.device, rng=self.rng)[0]
+        else:
+            raws = generate(self.gen.model, [(seg, self.cursor)] * n, [0] * n, device=self.gen.device)
         gen_ms = (time.perf_counter() - t0) * 1000
         paths, lines = [], []
         for i, raw in enumerate(raws):
@@ -192,6 +201,7 @@ class Demo:
                          f"{self._outcome(seg, ev, end)}")
             paths.append(ev)
         head = (f"{self.label}  |  generated in {gen_ms:.0f} ms  |  landing fix {'on' if self.land else 'off'}"
+                f"  |  guard {'on' if self.guard else 'off'}"
                 f"{'  |  LIVE' if self.live else ''}")
         if len(paths) > 1 and self.kind in ("scroll", "scroll_click"):
             head += "  |  page shows path 1"

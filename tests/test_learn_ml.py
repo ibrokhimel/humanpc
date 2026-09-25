@@ -153,6 +153,24 @@ def test_kv_cache_matches_full_forward():
     assert torch.allclose(full["end"], torch.stack(ends, 1), atol=1e-5)
 
 
+def test_preallocated_cache_matches_full_forward_and_survives_row_drops():
+    torch.manual_seed(0)
+    m = _tiny_model().eval()
+    x, c, p = torch.randn(3, 17, IN_DIM), torch.randn(3, COND_DIM), torch.tensor([0, 1, 0])
+    with torch.no_grad():
+        full = m(x, c, p)
+        cache, ends = m.empty_cache(3, 32), []
+        for t in range(9):
+            o, cache = m(x[:, t:t + 1], c, p, cache=cache, start=t)
+            ends.append(o["end"][:, -1])
+        assert torch.allclose(full["end"][:, :9], torch.stack(ends, 1), atol=1e-5)
+        rows = torch.tensor([0, 2])  # row 1 finished: drop it and keep going
+        cache, c2, p2 = m.select_cache(cache, rows), c[rows], p[rows]
+        for t in range(9, 17):
+            o, cache = m(x[rows, t:t + 1], c2, p2, cache=cache, start=t)
+            assert torch.allclose(full["end"][rows, t], o["end"][:, -1], atol=1e-5)
+
+
 def test_training_step_reduces_loss_and_generation_runs(tmp_path):
     from humanpc.learn.ml.generate import MovementGenerator, generate, to_events
     from humanpc.learn.ml.model import load, losses, save
@@ -190,3 +208,55 @@ def test_land_on_target_pulls_endpoint_inside_radius():
     out = land_on_target(g, seg, (0.0, 0.0), random.Random(1))
     assert math.hypot(out["dx"].sum() - 300, out["dy"].sum()) <= 8.01
     assert np.allclose(out["dx"][:10], 12.0)  # early motion untouched
+
+
+def test_train_reports_every_epoch_and_saves_before_best_callback(tmp_path, monkeypatch):
+    from humanpc.learn.ml import train as train_mod
+
+    segs = extract(*_session(n_tasks=12))
+    monkeypatch.setattr(train_mod, "load_all", lambda *a, **k: segs)
+    seen = []
+
+    def on_epoch(rec, best):
+        seen.append((rec["epoch"], best, (tmp_path / "model.pt").exists()))
+
+    summary = train_mod.train(tmp_path, tmp_path, epochs=2, size="small", cpu=True, log=lambda *_: None,
+                              on_epoch=on_epoch)
+    assert [s[0] for s in seen] == [1, 2]
+    assert seen[0][1] and seen[0][2]  # first epoch is always a best, and model.pt is already written
+    assert summary["epochs_run"] == 2
+
+
+def test_watch_exam_is_fixed_and_inside_the_window():
+    from humanpc.learn.ml.watch import H, W, exam
+
+    a, b = exam(), exam()
+    assert [(s.kind, s.target, st) for s, st in a] == [(s.kind, s.target, st) for s, st in b]
+    assert {s.kind for s, _ in a} == {"aim", "aim_double", "aim_right", "drag"}
+    for seg, start in a:
+        for x, y in (seg.target, start):
+            assert 0 < x < W and 0 < y < H
+
+
+def test_envelope_guard_rejects_runaways_and_unfinished_paths():
+    from humanpc.learn.ml.generate import envelope, within_envelope
+
+    segs = extract(*_session(n_tasks=12))
+    env = envelope(segs)
+    assert "aim" in env and env["aim"]["overshoot_px"] >= 0
+    seg, start = Segment("aim", 0, 0, target=(300.0, 0.0), radius=10), (0.0, 0.0)
+    clean = {"dx": np.full(30, 10.0), "dy": np.zeros(30), "finished": True}
+    runaway = {"dx": np.full(30, 40.0), "dy": np.zeros(30), "finished": True}  # ends 900 px past
+    assert within_envelope(clean, seg, start, env)
+    assert not within_envelope(runaway, seg, start, env)
+    assert not within_envelope({**clean, "finished": False}, seg, start, env)
+
+
+def test_generate_guarded_returns_one_path_per_job(tmp_path):
+    from humanpc.learn.ml.generate import generate_guarded
+
+    m = _tiny_model().eval()
+    jobs = [(Segment("aim", 0, 0, target=(200.0, 50.0), radius=12), (0.0, 0.0))] * 3
+    paths, rejected = generate_guarded(m, jobs, [0, 0, 0], {}, candidates=2, max_steps=20,
+                                       rng=random.Random(0))
+    assert len(paths) == 3 and 0.0 <= rejected <= 1.0
