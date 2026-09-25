@@ -258,6 +258,7 @@ humanpc trainer-export out.zip --person bob  # the reverse
 
 ```bash
 humanpc train-model     # Transformer + detector -> measured humanness, updates task weights
+humanpc train-model --watch   # same, with a live window showing the best model so far
 humanpc eval-model      # re-score the saved model
 humanpc model-demo      # playground: watch it click, double/right-click, drag, scroll, read
 ```
