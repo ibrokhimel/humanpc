@@ -31,6 +31,7 @@ from .mouse import (
     MouseTrajectoryEngine,
     OvershootSimulator,
     VelocityProfile,
+    sample_polling_hz,
 )
 from .typing import DwellModel, HumanTypingEngine
 
@@ -46,6 +47,7 @@ class Individual:
     overshoot_prob: float
     move_speed: float       # multiplies movement time (<1 = faster)
     skill: float            # latent factor, kept for reference
+    polling_hz: int = 125   # the person's *hardware*: mouse report rate
 
     def build_mouse_engine(self) -> MouseTrajectoryEngine:
         return MouseTrajectoryEngine(
@@ -90,6 +92,7 @@ def sample_individual(rng) -> Individual:
         overshoot_prob=overshoot_prob,
         move_speed=move_speed,
         skill=z,
+        polling_hz=sample_polling_hz(rng),
     )
 
 

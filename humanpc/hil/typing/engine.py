@@ -39,6 +39,8 @@ class HumanTypingEngine:
         reaction: tuple[float, float] = (0.18, 0.42),
         correction: tuple[float, float] = (0.05, 0.13),
         model_shift: bool = True,
+        late_notice_probability: float = 0.35,
+        late_notice_chars: tuple[int, int] = (1, 3),
     ):
         self.speed = SpeedModel()
         self.pause = PauseModel()
@@ -50,6 +52,8 @@ class HumanTypingEngine:
         self.reaction = reaction
         self.correction = correction
         self.model_shift = model_shift
+        self.late_notice_probability = late_notice_probability
+        self.late_notice_chars = late_notice_chars
 
     @staticmethod
     def _word_at(text: str, i: int) -> str:
@@ -107,6 +111,29 @@ class HumanTypingEngine:
                     handled = True
                 elif kind == "substitution":
                     events.append(self._ev("char", neighbor(ch, rng), delay, rng))
+                    if corrected and rng.random() < self.late_notice_probability:
+                        # Late notice: the eye is ahead of the hand, so a wrong
+                        # letter is often caught a few characters downstream, not
+                        # on the next keystroke. Type on, then backspace the whole
+                        # run and retype it. Every-error-caught-instantly is a
+                        # rhythm no typist has.
+                        k = min(rng.randint(*self.late_notice_chars), n - i - 1)
+                        run = text[i + 1: i + 1 + k]
+                        for j, extra in enumerate(run):
+                            d = self.speed.char_delay(
+                                extra, text[i + j], self._word_at(text, i + j + 1),
+                                i + j + 1, base_wpm, rng, session_fatigue,
+                            )
+                            events.append(self._ev("char", extra, d, rng))
+                        for b in range(k + 1):   # wipe the run *and* the typo
+                            events.append(self._ev(
+                                "key", "backspace",
+                                self._reaction(rng) if b == 0 else self._correction(rng), rng))
+                        for j, good in enumerate(ch + run):
+                            events.append(self._ev("char", good, self._correction(rng), rng))
+                        prev = run[-1] if run else ch
+                        i += k + 1
+                        continue
                     if corrected:
                         events.append(self._ev("key", "backspace", self._reaction(rng), rng))
                         events.append(self._ev("char", ch, self._correction(rng), rng))

@@ -276,7 +276,13 @@ _HUMAN_BANDS = {
 
 
 def trajectory_realism_report(xs, ys, ts) -> dict:
-    """Per-feature human-range verdicts + an overall human-likeness score."""
+    """Per-feature human-range verdicts + an overall human-likeness score.
+
+    NOTE: every feature here describes the *shape* of a trajectory. Shape is only
+    half the problem — see ``stream_realism_report`` for whether the event stream
+    could have come off a physical device at all. A path can score 1.0 here and
+    still be emitted at an impossible cadence.
+    """
     f = trajectory_features(xs, ys, ts)
     checks = {}
     for key, (lo, hi) in _HUMAN_BANDS.items():
@@ -284,6 +290,78 @@ def trajectory_realism_report(xs, ys, ts) -> dict:
         checks[key] = (v is not None and lo <= v <= hi)
     score = sum(checks.values()) / len(checks) if checks else 0.0
     return {"features": f, "checks": checks, "human_score": score}
+
+
+# --- device / stream plausibility -------------------------------------------
+# These are DEVICE-PHYSICS bands, not human-behaviour bands: they describe what a
+# polled USB HID mouse can physically emit, independent of who is holding it.
+# A stream outside them did not come off a mouse, whatever its path looks like.
+#
+# Unlike _HUMAN_BANDS (literature values for a human hand), these are derivable
+# from the hardware: USB polling runs at 125-1000 Hz on a fixed clock, so
+# intervals are near-constant multiples of the period and the stream never goes
+# quiet mid-motion. Calibrate against a real capture with
+# ``winval/val_capture_human.py`` before trusting the exact edges.
+_STREAM_BANDS = {
+    "interval_cv": (0.0, 0.45),        # fixed clock: intervals barely vary
+    "event_rate_hz": (100.0, 1100.0),  # 125 Hz is the slowest mouse sold
+    "max_gap_ms": (0.0, 60.0),         # a moving hand never stops reporting
+    "delta_p95_px": (1.0, 20.0),       # reports carry small integer counts
+    "grid_ratio": (0.80, 1.0),         # intervals land on the polling grid
+}
+
+
+def stream_features(xs, ys, ts) -> dict:
+    """Features of the event stream *as a sampling process*, not as a path.
+
+    The cheapest discriminator available to any observer: a real mouse reports on
+    a fixed clock in small integer counts, so variability lives in the deltas and
+    not in the timestamps. Scripted input inverts that.
+    """
+    n = min(len(xs), len(ys), len(ts))
+    if n < 3:
+        return {}
+    dts = [ts[i] - ts[i - 1] for i in range(1, n)]
+    dts = [d for d in dts if d > 0]
+    if not dts:
+        return {}
+    deltas = [max(abs(xs[i] - xs[i - 1]), abs(ys[i] - ys[i - 1])) for i in range(1, n)]
+    span = ts[n - 1] - ts[0]
+
+    # How well do the intervals sit on a single polling grid? Take the shortest
+    # interval as the candidate period and measure how close the rest are to a
+    # whole multiple of it.
+    period = min(dts)
+    if period > 0:
+        residuals = [abs((d / period) - round(d / period)) for d in dts]
+        grid = sum(1 for r in residuals if r < 0.25) / len(residuals)
+    else:
+        grid = 0.0
+
+    ordered = sorted(deltas)
+    p95 = ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))]
+    return {
+        "interval_cv": _cv(dts),
+        "event_rate_hz": (n - 1) / span if span > 0 else 0.0,
+        "max_gap_ms": 1000.0 * max(dts),
+        "median_interval_ms": 1000.0 * sorted(dts)[len(dts) // 2],
+        "delta_p95_px": float(p95),
+        "delta_max_px": float(max(deltas)),
+        "zero_delta_frac": sum(1 for d in deltas if d == 0) / len(deltas),
+        "grid_ratio": grid,
+        "events": n,
+    }
+
+
+def stream_realism_report(xs, ys, ts) -> dict:
+    """Per-feature device-plausibility verdicts + an overall score."""
+    f = stream_features(xs, ys, ts)
+    checks = {}
+    for key, (lo, hi) in _STREAM_BANDS.items():
+        v = f.get(key)
+        checks[key] = (v is not None and lo <= v <= hi)
+    score = sum(checks.values()) / len(checks) if checks else 0.0
+    return {"features": f, "checks": checks, "device_score": score}
 
 
 # --- discriminator ----------------------------------------------------------

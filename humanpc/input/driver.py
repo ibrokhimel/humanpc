@@ -13,6 +13,16 @@ Button = str  # "left" | "right" | "middle"
 
 
 class InputDriver(ABC):
+    # --- capability flags ---------------------------------------------------
+    # Declared, not guessed. The Bot reads these to decide whether a HIL feature
+    # can actually be realised on this backend; features that cannot be are
+    # SKIPPED rather than silently degraded. (Sleeping a key-hold around an
+    # atomic emit, for instance, produces no dwell at all *and* corrupts the
+    # inter-key interval — worse than not modelling dwell in the first place.)
+    supports_dwell: bool = False       # can separate char press from release
+    supports_relative: bool = False    # can inject true relative motion
+    supports_scancodes: bool = False   # emits hardware scan codes, not VK_PACKET
+
     @abstractmethod
     def move(self, x: int, y: int) -> None:
         """Place the cursor at absolute (x, y)."""
@@ -43,16 +53,25 @@ class InputDriver(ABC):
 
     # Optional primitives with safe fallbacks --------------------------------
     # Backends that can separate a character key-press into down/up events
-    # (e.g. the native SendInput driver) override these so the Bot can insert a
-    # realistic key-hold (dwell) between them. The default keeps the atomic
-    # behaviour, so a driver that only implements ``write_char`` still works —
-    # it just can't model dwell.
+    # (e.g. the native SendInput driver) override these AND set
+    # ``supports_dwell = True``. The default keeps the atomic behaviour, so a
+    # driver that only implements ``write_char`` still works — it just cannot
+    # model dwell, and the Bot skips the hold rather than faking it.
     def char_down(self, char: str) -> None:
         """Press a character key. Default: atomic emit (no separable hold)."""
         self.write_char(char)
 
     def char_up(self, char: str) -> None:
         """Release a character key. Default: no-op (write_char already released)."""
+
+    def char_needs_shift(self, char: str) -> bool | None:
+        """Whether this backend's layout needs Shift for ``char``.
+
+        ``None`` means "don't know" — the caller keeps its own (US QWERTY)
+        assumption. Backends that resolve characters against the active keyboard
+        layout override this so the modifier matches the key actually sent.
+        """
+        return None
 
     def move_relative(self, dx: int, dy: int) -> None:
         """Move by a relative delta. Default: compute the absolute target.

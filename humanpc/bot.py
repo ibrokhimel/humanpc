@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import random
 import time
+import warnings
 from contextlib import contextmanager
 
 from .config import Config, Persona, get_persona
@@ -29,6 +30,7 @@ from .hil import (
 )
 from .hil.idle import IdleDriftLoop
 from .hil.individual import ActionTempo, sample_individual
+from .hil.mouse import DEFAULT_POLLING_HZ, resample_to_grid
 from .hil.precise import begin_high_resolution, end_high_resolution, precise_sleep
 from .input import NullDriver, default_driver
 from .perception.dpi import set_dpi_awareness
@@ -46,6 +48,9 @@ from .windows import Window, WindowManager
 # defer rather than stutter in place.
 _REL_STEP_PX = 6
 _REL_MIN_PX = 2
+# How far off target a relative landing may be before we spend an absolute
+# correction event on it. 1 px is invisible to any click target.
+_LAND_TOLERANCE_PX = 1
 
 # Which behavioural state each action implies (for bot.behavior observability).
 _ACTION_STATES = {
@@ -124,11 +129,10 @@ class Bot:
                 always_correct=self.config.always_correct_typing,
             )
             self._move_speed = 1.0
-        if self.config.relative_mouse:
-            # The settle phase's sub-pixel micro-moves don't survive relative
-            # emission (acceleration swallows them) and read as an end-of-move
-            # twitch, so skip them in relative mode.
-            self._mouse.settle_probability = 0.0
+        # Resolved lazily against the driver's declared capabilities (the driver
+        # itself is created on first use), see ``_relative_mode``.
+        self._relative: bool | None = None
+        self._warned: set[str] = set()
         self._timing = HumanTimingManager()
         self._session = SessionState()
         self._resolver = resolver  # default built lazily (cheap; finders load on use)
@@ -256,14 +260,71 @@ class Bot:
         self._end("move_to", x=round(point.x), y=round(point.y), via=match.method)
         return self
 
+    def _warn_once(self, key: str, message: str) -> None:
+        # Dry-run drives the NullDriver by design; complaining that it lacks a
+        # real backend's capabilities is noise, not information.
+        if self.dry_run or key in self._warned:
+            return
+        self._warned.add(key)
+        warnings.warn(message, RuntimeWarning, stacklevel=3)
+
+    def _relative_mode(self) -> bool:
+        """Whether to emit relative motion, honouring driver capabilities.
+
+        ``config.relative_mouse is None`` (the default) means *auto*: use true
+        relative motion when the backend can inject it, absolute otherwise. An
+        explicit ``True`` on a backend that cannot warns instead of silently
+        reconstructing absolute moves and pretending they went through the OS
+        ballistics curve.
+        """
+        if self._relative is None:
+            want = self.config.relative_mouse
+            # Dry-run simulates the *intended* backend, so honour the request
+            # rather than the NullDriver's (absent) capabilities.
+            if self.dry_run:
+                self._relative = bool(want)
+                if self._relative:
+                    self._mouse.settle_probability = 0.0
+                return self._relative
+            native = getattr(self.driver, "supports_relative", False)
+            if want and not native:
+                self._warn_once(
+                    "relative",
+                    f"relative_mouse=True but {type(self.driver).__name__} cannot inject "
+                    "true relative motion; falling back to absolute moves "
+                    "(use SendInputDriver for relative injection)",
+                )
+            self._relative = bool(native) if want is None else bool(want and native)
+            if self._relative:
+                # The settle phase's sub-pixel micro-moves don't survive relative
+                # emission (acceleration swallows them) and read as an
+                # end-of-move twitch, so skip them in relative mode.
+                self._mouse.settle_probability = 0.0
+        return self._relative
+
+    def _polling_hz(self) -> int:
+        """The device report rate the trajectory is resampled onto."""
+        hz = self.config.polling_hz
+        if hz is None:
+            hz = self.individual.polling_hz if self.individual is not None else DEFAULT_POLLING_HZ
+        return int(hz)
+
     def _run_plan(self, plan, target) -> None:
         """Execute a planned trajectory step-by-step against the driver.
+
+        The plan is first resampled onto a fixed device polling grid so the
+        emitted stream has the near-constant inter-event intervals and small
+        integer deltas of a real HID mouse (see ``hil.mouse.resample``); without
+        it the per-step timing jitter is itself the giveaway.
 
         Absolute mode: one positioned move per step, then the step's dwell.
         Relative mode: glide each step (see ``_glide_relative``), then snap the
         final residual the OS acceleration curve can't express relatively.
         """
-        relative = self.config.relative_mouse
+        relative = self._relative_mode()
+        hz = self._polling_hz()
+        if hz > 0:
+            plan = resample_to_grid(plan, hz, self._rng)
         next_micro = self._rng.randint(8, 15) if relative else None
         n = len(plan)
         for idx, step in enumerate(plan):
@@ -333,16 +394,19 @@ class Bot:
             self._sleep(slice_dt)
 
     def _correct_cursor(self, target) -> None:
-        """Land exactly on target after a relative glide.
+        """Land on target after a relative glide, within tolerance.
 
-        Closed-loop gliding already leaves the cursor within a few px, and pointer
-        acceleration can't express the final 1-2 px as a relative delta (it scales
-        them toward 0 px), so finish with one clean absolute snap rather than
-        creeping in with sub-pixel relative nudges — that creep is what read as an
-        end-of-move 'glitch' when the cursor stopped.
+        Closed-loop gliding already leaves the cursor within a pixel or two, and
+        pointer acceleration can't express that residual as a relative delta (it
+        scales it toward 0 px). Forcing exactness meant *every* relative move
+        ended with one absolute event — a MOUSE_MOVE_ABSOLUTE report that no
+        physical mouse emits, undoing the point of relative mode for the sake of
+        sub-pixel accuracy no click needs. So accept a landing within
+        ``_LAND_TOLERANCE_PX`` and only snap when genuinely off.
         """
         tx, ty = target.as_int()
-        if self.driver.position() != (tx, ty):
+        cx, cy = self.driver.position()
+        if max(abs(cx - tx), abs(cy - ty)) > _LAND_TOLERANCE_PX:
             self.driver.move(tx, ty)
 
     def click(self, target=None, *, button: str = "left", clicks: int = 1) -> "Bot":
@@ -414,22 +478,43 @@ class Bot:
             base_wpm = max(20.0, self.individual.base_wpm * (self._persona.type_cps / 6.0))
         else:
             base_wpm = max(20.0, self._persona.type_cps * 12)  # cps -> wpm (~5 chars/word)
+        dwell_ok = getattr(self.driver, "supports_dwell", False)
+        if not dwell_ok:
+            self._warn_once(
+                "dwell",
+                f"{type(self.driver).__name__} cannot separate character press from "
+                "release, so keystroke dwell is not modelled (use SendInputDriver "
+                "for realistic key-hold times)",
+            )
         for event in self._typing.plan(text, self._rng, base_wpm=base_wpm, session_fatigue=self._pace()):
             self.killswitch.check()
             self._sleep(event.delay)
             # Held modifiers (e.g. Shift for a capital) press first and overlap
             # the keystroke, then release after it — real modifier dynamics.
+            # Ask the driver which modifier the ACTIVE layout needs; the planner's
+            # table assumes US QWERTY, and a Shift that doesn't match the key
+            # being emitted is a worse tell than no Shift at all.
             mods = getattr(event, "modifiers", ())
+            if event.kind == "char":
+                layout_shift = self.driver.char_needs_shift(event.value)
+                if layout_shift is not None:
+                    mods = ("shift",) if layout_shift else ()
             for m in mods:
                 self.driver.key_down(m)
                 self._sleep(self._rng.uniform(0.01, 0.03))
             # Down -> hold(dwell) -> up so the keystroke has a realistic key-hold
             # time (a primary keystroke-dynamics signal), instead of an atomic
-            # zero-dwell emit. Drivers without separable injection fall back
-            # gracefully (see InputDriver.char_down/char_up).
+            # zero-dwell emit.
+            #
+            # A backend that cannot separate press from release gets NO hold at
+            # all: sleeping around an atomic emit yields 0 ms dwell anyway *and*
+            # adds the hold to the inter-key interval, corrupting the second
+            # keystroke-dynamics signal to fake the first. Named keys always have
+            # real key_down/key_up, so they hold regardless.
             if event.kind == "char":
                 self.driver.char_down(event.value)
-                self._sleep(event.dwell)
+                if dwell_ok:
+                    self._sleep(event.dwell)
                 self.driver.char_up(event.value)
             else:
                 self.driver.key_down(event.value)

@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>humanpc workflow testbench</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2330; --muted:#667085; --line:#d9dde5; --accent:#2f6fed; --ok:#12a150; --bad:#d92d20; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 24px 480px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 28px 0 10px; }
+  .muted { color: var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin:14px 0; }
+  .task { border-left: 4px solid var(--accent); font-size: 15px; }
+  .task code { background:#eef2fb; padding:1px 5px; border-radius:4px; font-size: 14px; word-break: break-word; }
+  .navgrid { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+  .navlink { display:block; padding:18px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--ink); text-decoration:none; }
+  .navlink:hover { border-color: var(--accent); }
+  .navlink b { display:block; font-size:17px; }
+  label.field { display:block; font-weight:600; margin:14px 0 6px; }
+  input[type=text], input[type=email], textarea { width:100%; padding:9px 11px; font:inherit; border:1px solid var(--line); border-radius:7px; background:#fff; }
+  input:focus, textarea:focus, button:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  textarea { height: 120px; resize: none; }
+  .terms { height: 900px; overflow: hidden; color: var(--muted); font-size: 14px; }
+  .dropdown { position: relative; width: 280px; }
+  .dropdown button { width:100%; text-align:left; padding:9px 11px; font:inherit; border:1px solid var(--line); border-radius:7px; background:#fff; cursor:pointer; }
+  .dropdown ul { list-style:none; margin:4px 0 0; padding:4px; position:absolute; left:0; right:0; background:#fff; border:1px solid var(--line); border-radius:7px; box-shadow:0 8px 24px rgba(0,0,0,.12); z-index:5; }
+  .dropdown li { padding:7px 10px; border-radius:5px; cursor:pointer; }
+  .dropdown li:hover { background:#eef2fb; }
+  .checks { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px 16px; }
+  .checks label { display:flex; align-items:center; gap:8px; }
+  .checks input { width:16px; height:16px; margin:0; }
+  .sliderrow { display:flex; align-items:center; gap:16px; }
+  input[type=range] { -webkit-appearance:none; appearance:none; width:360px; height:6px; background:var(--line); border-radius:3px; margin:12px 0; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; background:var(--accent); cursor:pointer; }
+  #slider-val { font-variant-numeric: tabular-nums; font-weight:600; min-width: 3ch; }
+  .primary { padding:11px 26px; font:inherit; font-weight:600; color:#fff; background:var(--accent); border:0; border-radius:8px; cursor:pointer; margin-top:22px; }
+  .pass { color: var(--ok); } .fail { color: var(--bad); }
+  .result td { padding: 3px 14px 3px 0; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <section id="view-home">
+    <h1>Workspace</h1>
+    <p class="muted">Local testbench. Nothing here leaves this machine.</p>
+    <div class="card task" id="task-home" data-t></div>
+    <div class="navgrid">
+      <a class="navlink" data-t id="nav-billing" href="#billing"><b>Billing</b><span class="muted">Invoices and payment methods</span></a>
+      <a class="navlink" data-t id="nav-register" href="#register"><b>Account registration</b><span class="muted">Create a new account</span></a>
+      <a class="navlink" data-t id="nav-reports" href="#reports"><b>Reports</b><span class="muted">Monthly usage</span></a>
+      <a class="navlink" data-t id="nav-help" href="#help"><b>Help</b><span class="muted">Docs and support</span></a>
+    </div>
+    <p id="home-note" class="muted"></p>
+  </section>
+
+  <section id="view-register" hidden>
+    <h1>Account registration</h1>
+    <div class="card task" id="task-form" data-t></div>
+    <div class="card">
+      <label class="field" for="name">Full name</label>
+      <input type="text" id="name" data-t autocomplete="off" spellcheck="false">
+      <label class="field" for="email">Email</label>
+      <input type="email" id="email" data-t autocomplete="off" spellcheck="false">
+      <label class="field" for="about">About you</label>
+      <textarea id="about" data-t spellcheck="false"></textarea>
+    </div>
+    <h2>Terms of service</h2>
+    <div class="card terms" id="terms"></div>
+    <div class="card">
+      <label class="field">Country</label>
+      <div class="dropdown">
+        <button type="button" id="country-btn" data-t>Choose a country</button>
+        <ul id="country-list" hidden></ul>
+      </div>
+      <label class="field">Interests</label>
+      <div class="checks" id="checks"></div>
+      <label class="field">How satisfied are you? (set the exact value)</label>
+      <div class="sliderrow">
+        <input type="range" id="slider" data-t min="0" max="100" value="50">
+        <span id="slider-val">50</span>
+      </div>
+      <button type="button" class="primary" id="submit" data-t>Create account</button>
+    </div>
+  </section>
+
+  <section id="view-done" hidden>
+    <h1>Done</h1>
+    <div class="card"><table class="result" id="result"></table></div>
+    <p id="save-status" class="muted">Saving log...</p>
+  </section>
+</main>
+<script>
+"use strict";
+const COUNTRIES = ["Argentina","Brazil","Canada","Denmark","Egypt","France","Germany","Japan"];
+const INTERESTS = ["music","sports","travel","cooking","gaming","reading"];
+const THUMB = 18;
+const T0 = performance.now();
+const ev = [];                         // the event log
+let task = null, submitted = false;
+let offset = null, calibrated = false; // screen(CSS px) = client + offset
+const $ = (id) => document.getElementById(id);
+const r2 = (v) => Math.round(v * 100) / 100;
+const dpr = () => window.devicePixelRatio || 1;
+const tagOf = (el) => (el && el.closest) ? (el.closest("[data-t]") || {}).id || "" : "";
+
+// ---- event capture (full-rate: coalesced pointer events) ----
+function screenPt(e) { return [r2(e.screenX * dpr()), r2(e.screenY * dpr())]; }
+function calibrate(e) {
+  offset = [e.screenX - e.clientX, e.screenY - e.clientY];
+  calibrated = true;
+}
+addEventListener("pointermove", (e) => {
+  calibrate(e);
+  const list = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  for (const c of (list.length ? list : [e])) ev.push([r2(c.timeStamp), "m", ...screenPt(c)]);
+}, { capture: true, passive: true });
+for (const [type, code] of [["pointerdown", "d"], ["pointerup", "u"]]) {
+  addEventListener(type, (e) => {
+    calibrate(e);
+    const t = e.target.closest ? (e.target.closest("[data-t],li,label") || e.target) : e.target;
+    const rc = t.getBoundingClientRect ? t.getBoundingClientRect() : { width: 0, height: 0 };
+    ev.push([r2(e.timeStamp), code, ...screenPt(e), e.button, t.id || tagOf(t),
+             r2(rc.width * dpr()), r2(rc.height * dpr())]);
+  }, { capture: true, passive: true });
+}
+addEventListener("wheel", (e) => ev.push([r2(e.timeStamp), "w", r2(e.deltaY), e.deltaMode, ...screenPt(e)]),
+                 { capture: true, passive: true });
+for (const [type, code] of [["keydown", "kd"], ["keyup", "ku"]]) {
+  addEventListener(type, (e) => ev.push([r2(e.timeStamp), code, e.code, e.key,
+                                         e.repeat ? 1 : 0, (document.activeElement || {}).id || ""]),
+                   { capture: true });
+}
+addEventListener("focusin", (e) => ev.push([r2(performance.now()), "f", e.target.id || ""]));
+addEventListener("scroll", () => ev.push([r2(performance.now()), "s", r2(scrollY)]), { passive: true });
+function mark(label) { ev.push([r2(performance.now()), "x", label]); }
+
+// ---- views / navigation ----
+function show(view) {
+  for (const v of ["home", "register", "done"]) $("view-" + v).hidden = v !== view;
+  ev.push([r2(performance.now()), "v", view]);
+}
+function route() {
+  const h = location.hash.slice(1);
+  if (h === "register") show("register");
+  else if (submitted) show("done");
+  else {
+    show("home");
+    $("home-note").textContent = h ? `"${h}" is not part of this test - use Account registration.` : "";
+  }
+}
+addEventListener("hashchange", route);
+
+// ---- form widgets ----
+function buildForm() {
+  const ul = $("country-list");
+  for (const c of COUNTRIES) {
+    const li = document.createElement("li");
+    li.id = "opt-" + c.toLowerCase(); li.dataset.t = ""; li.textContent = c;
+    li.addEventListener("click", () => { $("country-btn").textContent = c; $("country-btn").dataset.value = c; ul.hidden = true; });
+    ul.appendChild(li);
+  }
+  $("country-btn").addEventListener("click", () => { ul.hidden = !ul.hidden; });
+  document.addEventListener("pointerdown", (e) => {
+    if (!e.target.closest(".dropdown")) ul.hidden = true;
+  });
+  for (const k of INTERESTS) {
+    const lab = document.createElement("label");
+    lab.innerHTML = `<input type="checkbox" id="int-${k}" data-t> ${k}`;
+    $("checks").appendChild(lab);
+  }
+  $("slider").addEventListener("input", () => { $("slider-val").textContent = $("slider").value; });
+  $("submit").addEventListener("click", submit);
+  const para = "By creating an account you agree that this is a local test page. " +
+    "The text below exists only to make the page long enough that the lower half of the form " +
+    "sits below the fold, so reaching it requires scrolling. ";
+  $("terms").textContent = para.repeat(14);
+}
+
+function values() {
+  return {
+    name: $("name").value, email: $("email").value, about: $("about").value,
+    country: $("country-btn").dataset.value || "",
+    interests: INTERESTS.filter((k) => $("int-" + k).checked),
+    slider: Number($("slider").value),
+  };
+}
+
+function checkResults() {
+  const v = values();
+  const same = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+  const checks = {
+    name: v.name === task.name, email: v.email === task.email, about: v.about === task.about,
+    country: v.country === task.country, interests: same(v.interests, task.interests),
+    slider: v.slider === task.slider,
+  };
+  return { checks, pass: Object.values(checks).every(Boolean), values: v };
+}
+
+async function submit() {
+  if (submitted) return;
+  submitted = true;
+  mark("submit");
+  const res = checkResults();
+  show("done");
+  $("result").innerHTML = Object.entries(res.checks).map(([k, ok]) =>
+    `<tr><td>${k}</td><td class="${ok ? "pass" : "fail"}">${ok ? "correct" : "wrong"}</td></tr>`).join("") +
+    `<tr><td><b>overall</b></td><td class="${res.pass ? "pass" : "fail"}"><b>${res.pass ? "PASS" : "FAIL"}</b></td></tr>`;
+  const payload = {
+    meta: { dpr: dpr(), screen: [screen.width * dpr(), screen.height * dpr()], ua: navigator.userAgent,
+            time_origin: performance.timeOrigin, page_t0: T0, calibrated, offset },
+    task, results: res, events: ev,
+  };
+  try {
+    const r = await fetch("/api/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    $("save-status").textContent = r.ok ? "Log saved. You can close this window." : "Saving failed: HTTP " + r.status;
+  } catch (err) { $("save-status").textContent = "Saving failed: " + err; }
+}
+
+function renderTask() {
+  const html =
+    `<b>Your task</b> (${task.mode === "human" ? "do it yourself, at your normal pace" : "automated run"})<br>` +
+    `Open <b>Account registration</b>, then fill in: name <code>${task.name}</code>, ` +
+    `email <code>${task.email}</code>, about <code>${task.about}</code>, ` +
+    `country <code>${task.country}</code>, interests <code>${task.interests.join(", ")}</code>, ` +
+    `satisfaction exactly <code>${task.slider}</code>. Then click <b>Create account</b>.`;
+  $("task-home").innerHTML = html; $("task-form").innerHTML = html;
+}
+
+// ---- layout reporting (lets the driver find elements in screen pixels) ----
+let lastLayout = "";
+function layout() {
+  const els = {};
+  for (const el of document.querySelectorAll("[data-t]")) {
+    if (!el.id || el.offsetParent === null) continue;   // hidden
+    const r = el.getBoundingClientRect();
+    els[el.id] = [r2(r.left), r2(r.top), r2(r.width), r2(r.height)];
+  }
+  const est = [screenX + (outerWidth - innerWidth) / 2,
+               screenY + (outerHeight - innerHeight) - (outerWidth - innerWidth) / 2];
+  const view = ["home", "register", "done"].find((v) => !$("view-" + v).hidden);
+  return { view, dpr: dpr(), offset: offset || est, calibrated, inner: [innerWidth, innerHeight],
+           scrollY: r2(scrollY), focus: (document.activeElement || {}).id || "", thumb: THUMB,
+           values: values(), submitted, els };
+}
+async function postLayout() {
+  const body = JSON.stringify(layout());
+  if (body === lastLayout) return;
+  lastLayout = body;
+  try { await fetch("/api/layout", { method: "POST", headers: { "Content-Type": "application/json" }, body }); }
+  catch (err) { lastLayout = ""; }
+}
+
+(async function init() {
+  buildForm();
+  task = await (await fetch("/api/task")).json();
+  renderTask();
+  route();
+  setInterval(postLayout, 100);
+})();
+</script>
+</body>
+</html>

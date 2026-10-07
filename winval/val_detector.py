@@ -18,7 +18,8 @@ from humanpc import Bot  # noqa: E402
 from humanpc.config import Config  # noqa: E402
 from humanpc.input.sendinput_driver import SendInputDriver  # noqa: E402
 from humanpc.validation import (  # noqa: E402
-    _HUMAN_BANDS, threshold_accuracy, trajectory_features, trajectory_realism_report,
+    _HUMAN_BANDS, _STREAM_BANDS, stream_features, threshold_accuracy,
+    trajectory_features, trajectory_realism_report,
 )
 
 u = ctypes.windll.user32

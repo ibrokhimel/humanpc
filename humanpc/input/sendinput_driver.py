@@ -78,18 +78,42 @@ _LEFTDOWN, _LEFTUP = 0x0002, 0x0004
 _RIGHTDOWN, _RIGHTUP = 0x0008, 0x0010
 _MIDDLEDOWN, _MIDDLEUP = 0x0020, 0x0040
 _WHEEL = 0x0800
-_KEYUP, _UNICODE = 0x0002, 0x0004
+_EXTENDEDKEY, _KEYUP, _UNICODE = 0x0001, 0x0002, 0x0004
+_MAPVK_VK_TO_VSC = 0
 _SM_XV, _SM_YV, _SM_CXV, _SM_CYV = 76, 77, 78, 79
+
+# Keys on the extended (grey) block of a 101-key keyboard. Real hardware sets
+# KEYEVENTF_EXTENDEDKEY for these; omitting it is itself a mismatch.
+_EXTENDED_VKS = frozenset({
+    0x21, 0x22, 0x23, 0x24,           # pageup, pagedown, end, home
+    0x25, 0x26, 0x27, 0x28,           # arrows
+    0x2D, 0x2E,                       # insert, delete
+    0x5B, 0x5C,                       # win keys
+    0x6F,                             # numpad divide
+})
 
 
 class SendInputDriver(InputDriver):
-    def __init__(self, *, extra_info: int = 0):
+    supports_dwell = True
+    supports_relative = True
+    supports_scancodes = True
+
+    def __init__(self, *, extra_info: int = 0, unicode_fallback: bool = True):
         if not hasattr(ctypes, "windll"):
             raise DriverError("SendInputDriver is Windows-only")
         self._u32 = ctypes.windll.user32
+        # Pin the signatures: both return 16/32-bit values that ctypes would
+        # otherwise read as a plain int, so VkKeyScanW's -1 ("no mapping") would
+        # not survive the round trip.
+        self._u32.VkKeyScanW.argtypes = [wintypes.WCHAR]
+        self._u32.VkKeyScanW.restype = wintypes.SHORT
+        self._u32.MapVirtualKeyW.argtypes = [wintypes.UINT, wintypes.UINT]
+        self._u32.MapVirtualKeyW.restype = wintypes.UINT
         # Stamped into every event's dwExtraInfo. Lets the bot identify its own
         # input; does NOT mask the injected flag (see module docstring).
         self._extra = ctypes.c_void_p(extra_info) if extra_info else None
+        self._unicode_fallback = unicode_fallback
+        self._vk_cache: dict[str, tuple[int, int] | None] = {}
 
     def _send(self, inp: _INPUT) -> None:
         self._u32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(_INPUT))
@@ -128,7 +152,18 @@ class SendInputDriver(InputDriver):
             self._mouse(_WHEEL, data=int(dy) * 120)
 
     def _key(self, vk: int, flags: int = 0) -> None:
-        ki = _KEYBDINPUT(vk, 0, flags, 0, self._extra)
+        """Emit a keyboard event carrying the key's real hardware scan code.
+
+        A hardware keypress always arrives with BOTH a virtual-key code and the
+        scan code the keyboard controller produced; ``wScan=0`` (the old
+        behaviour) is not a value any physical key can report, and anything
+        reading scan codes rather than VKs — DirectInput, most games, some
+        low-level hooks — sees nothing at all.
+        """
+        scan = self._u32.MapVirtualKeyW(vk, _MAPVK_VK_TO_VSC)
+        if vk in _EXTENDED_VKS:
+            flags |= _EXTENDEDKEY
+        ki = _KEYBDINPUT(vk, scan, flags, 0, self._extra)
         self._send(_INPUT(_INPUT_KEYBOARD, _UNION(ki=ki)))
 
     def key_down(self, key: str) -> None:
@@ -141,11 +176,63 @@ class SendInputDriver(InputDriver):
         ki = _KEYBDINPUT(0, ord(char), _UNICODE | flags, 0, self._extra)
         self._send(_INPUT(_INPUT_KEYBOARD, _UNION(ki=ki)))
 
+    def _char_vk(self, char: str) -> tuple[int, int] | None:
+        """(vk, shift_state) for ``char`` on the ACTIVE layout, or None.
+
+        ``VkKeyScanW`` returns the virtual key in the low byte and the modifier
+        state needed to produce the character in the high byte (1=Shift, 2=Ctrl,
+        4=Alt). We only take keys reachable with at most Shift — AltGr and
+        dead-key sequences are left to the Unicode path, which is always correct
+        even though it is less realistic.
+        """
+        if char in self._vk_cache:
+            return self._vk_cache[char]
+        result = None
+        try:
+            scan = self._u32.VkKeyScanW(char)
+        except Exception:
+            scan = -1
+        if scan != -1:
+            vk, state = scan & 0xFF, (scan >> 8) & 0xFF
+            if vk and not (state & ~0x01):   # no modifier, or Shift only
+                result = (vk, state & 0x01)
+        self._vk_cache[char] = result
+        return result
+
     def char_down(self, char: str) -> None:
-        self._unicode(char, 0)
+        """Press a character key.
+
+        Prefers a real virtual key + scan code from the active layout. The old
+        Unicode-only path made EVERY typed character arrive as ``VK_PACKET``
+        (0xE7) with no scan code — a value no keyboard produces, so keystroke
+        provenance was broken on every character regardless of dwell/rhythm
+        modelling. Characters the layout can't reach with at most Shift still
+        fall back to Unicode injection, which is less realistic but always
+        produces the exact character.
+        """
+        mapped = self._char_vk(char)
+        if mapped is None:
+            if not self._unicode_fallback:
+                raise DriverError(f"no layout mapping for {char!r}")
+            self._unicode(char, 0)
+        else:
+            self._key(mapped[0])
 
     def char_up(self, char: str) -> None:
-        self._unicode(char, _KEYUP)
+        mapped = self._char_vk(char)
+        if mapped is None:
+            self._unicode(char, _KEYUP)
+        else:
+            self._key(mapped[0], _KEYUP)
+
+    def char_needs_shift(self, char: str) -> bool | None:
+        """Whether the ACTIVE layout needs Shift for ``char``; None if unmapped.
+
+        The Bot asks the driver rather than assuming US QWERTY, so the Shift it
+        presses matches the key it is about to send.
+        """
+        mapped = self._char_vk(char)
+        return None if mapped is None else bool(mapped[1])
 
     def write_char(self, char: str) -> None:
         # Atomic emit; the Bot uses char_down/char_up directly to insert a dwell.

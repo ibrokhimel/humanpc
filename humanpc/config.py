@@ -65,7 +65,13 @@ class Config:
 
     # Timing & input provenance (Tier 0)
     precision_timing: bool = True         # high-resolution sleep + 1ms timer tick (Windows)
-    relative_mouse: bool = False          # inject relative deltas (through pointer ballistics) vs absolute
+    # None == auto: use relative motion when the driver natively supports it
+    # (SendInput), fall back to absolute otherwise. True/False force the choice.
+    relative_mouse: bool | None = None
+    # Device report rate. Planned trajectories are resampled onto this fixed grid
+    # so the emitted stream looks like a polled HID mouse instead of a variable-
+    # cadence script. None == use the Individual's sampled rate. 0 disables.
+    polling_hz: int | None = None
 
     # Individuality (Tier 4): sample a stable per-instance behavioural profile
     individuality: bool = True            # each Bot is a distinct, consistent person
